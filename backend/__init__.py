@@ -1,0 +1,1 @@
+"""MAI admissions analytics backend."""
