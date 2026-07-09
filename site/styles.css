@@ -403,6 +403,33 @@ button:disabled {
   font-size: 12px;
 }
 
+.status-pass {
+  border-color: rgba(48, 209, 126, 0.78);
+  background: linear-gradient(180deg, rgba(48, 209, 126, 0.24), rgba(13, 27, 57, 0.92));
+  box-shadow: inset 0 0 0 1px rgba(48, 209, 126, 0.12);
+}
+
+.status-pass strong {
+  color: #7dffb2;
+}
+
+.status-pass span {
+  color: #d7ffe8;
+}
+
+.status-wait {
+  border-color: rgba(255, 182, 72, 0.7);
+  background: linear-gradient(180deg, rgba(255, 182, 72, 0.18), rgba(13, 27, 57, 0.92));
+}
+
+.status-wait strong {
+  color: #ffd08a;
+}
+
+.status-neutral strong {
+  color: #dce7ff;
+}
+
 .direction-foot {
   display: grid;
   grid-template-columns: 1fr auto;

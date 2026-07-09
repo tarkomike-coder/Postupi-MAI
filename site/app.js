@@ -97,6 +97,11 @@ function missingText(gap) {
   return gap <= 0 ? "проходит" : `нужно ${gap} мест`;
 }
 
+function statusMetricClass(gap) {
+  if (gap === null || gap === undefined) return "metric status-neutral";
+  return gap <= 0 ? "metric status-pass" : "metric status-wait";
+}
+
 function directionStatus(item) {
   const gap = item.facts.real_gap_to_budget;
   if (gap === null || gap === undefined) return "нужны новые данные для оценки";
@@ -181,7 +186,7 @@ function renderDirections(directions) {
               <div class="metric"><strong>${f.position ?? "-"}</strong><span>общий список</span></div>
               <div class="metric"><strong>${f.consent_position ?? "-"}</strong><span>по согласиям</span></div>
               <div class="metric"><strong>${f.real_competitor_position ?? "-"}</strong><span>по каскаду</span></div>
-              <div class="metric"><strong>${missingText(f.real_gap_to_budget)}</strong><span>Текущий расчёт</span></div>
+              <div class="${statusMetricClass(f.real_gap_to_budget)}"><strong>${missingText(f.real_gap_to_budget)}</strong><span>Текущий расчёт</span></div>
             </div>
             <div class="direction-foot">
               <span>${directionStatus(item)}. Перед заявлением: ${item.cascade?.real_competitors_above ?? 0} реально мешают, ${item.cascade?.leaving_by_cascade ?? 0} уходят по каскаду, ${item.cascade?.waiting_without_consent ?? 0} без согласия.</span>

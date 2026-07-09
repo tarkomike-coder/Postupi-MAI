@@ -31,6 +31,7 @@ def test_frontend_exposes_compact_analytics_dashboard():
         "по каскаду",
         "если подтвердятся без согласия",
         "real-chance",
+        "status-pass",
     ]:
         assert expected in text
 
