@@ -31,7 +31,7 @@ class GroupItem:
 class ApplicantItem:
     application_id: str
     position: int | None
-    score: int
+    score: int | None
     priority: int | None
     consent: bool
     category: str | None = None
@@ -56,7 +56,10 @@ def _to_score(value: Any) -> int | None:
 def select_competition_groups(items: list[dict]) -> list[GroupItem]:
     selected = []
     for item in items:
-        if item.get("educationLevelName") != "Базовое высшее образование":
+        if item.get("educationLevelName") not in (
+            "Базовое высшее образование",
+            "Специализированное высшее образование",
+        ):
             continue
         if item.get("educationFormName") != "Очная":
             continue
@@ -81,7 +84,7 @@ def normalize_applicants(applicants: list[dict]) -> list[ApplicantItem]:
     for applicant in applicants:
         application_id = applicant.get("idApplication")
         score = _to_score(applicant.get("sumMark"))
-        if application_id is None or score is None:
+        if application_id is None:
             continue
         rows.append(
             ApplicantItem(

@@ -32,16 +32,35 @@ def test_selects_full_time_budget_groups_without_okso_allowlist():
             "placeTypeName": "Платные места",
             "numberPlaces": 100,
         },
+        {
+            "id": 14,
+            "oksoCode": "2.11.04.01",
+            "oksoName": "Радиотехника",
+            "educationLevelName": "Специализированное высшее образование",
+            "educationFormName": "Очная",
+            "placeTypeName": "Основные места в рамках КЦП",
+            "numberPlaces": 12,
+        },
+        {
+            "id": 15,
+            "oksoCode": "2.3",
+            "oksoName": "Аспирантура",
+            "educationLevelName": "Аспирантура",
+            "educationFormName": "Очная",
+            "placeTypeName": "Основные места в рамках КЦП",
+            "numberPlaces": 8,
+        },
     ]
 
     selected = select_competition_groups(items)
 
-    assert [item.group_id for item in selected] == [11, 12]
+    assert [item.group_id for item in selected] == [11, 12, 14]
     assert selected[0].okso_code == "09.03.01"
     assert selected[1].okso_code == "38.03.05"
+    assert selected[2].okso_code == "11.04.01"
 
 
-def test_normalizes_applicants_and_skips_missing_score_or_id():
+def test_normalizes_applicants_and_keeps_zero_scores_but_skips_missing_id():
     from backend.services.gosuslugi import normalize_applicants
 
     applicants = [
@@ -52,9 +71,11 @@ def test_normalizes_applicants_and_skips_missing_score_or_id():
 
     rows = normalize_applicants(applicants)
 
-    assert len(rows) == 1
+    assert len(rows) == 2
     assert rows[0].application_id == "1001"
     assert rows[0].position == 1
     assert rows[0].score == 301
     assert rows[0].priority == 1
     assert rows[0].consent is True
+    assert rows[1].application_id == "1002"
+    assert rows[1].score is None
