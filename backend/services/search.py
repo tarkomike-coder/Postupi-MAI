@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from math import log10
 
 from sqlalchemy import desc
@@ -21,6 +21,14 @@ def _window_start():
     return utcnow() - timedelta(minutes=settings.search_window_minutes)
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def _latest_ok_snapshot(db: Session) -> Snapshot | None:
     return (
         db.query(Snapshot)
@@ -36,7 +44,7 @@ def latest_status(db: Session) -> dict:
         return {"has_data": False, "updated_at": None, "groups_count": 0, "rows_count": 0}
     return {
         "has_data": True,
-        "updated_at": snapshot.finished_at or snapshot.started_at,
+        "updated_at": _as_utc(snapshot.finished_at or snapshot.started_at),
         "groups_count": snapshot.groups_count,
         "rows_count": snapshot.rows_count,
         "unique_applications_count": snapshot.unique_applications_count,
@@ -104,7 +112,7 @@ def _history(db: Session, application_id: str) -> list[dict]:
         )
         entry["points"].append(
             {
-                "date": (snapshot.finished_at or snapshot.started_at).isoformat(),
+                "date": _as_utc(snapshot.finished_at or snapshot.started_at).isoformat(),
                 "position": metric.position,
                 "consent_position": metric.consent_position,
                 "real_competitor_position": metric.real_competitor_position,
@@ -365,7 +373,7 @@ def build_search_response(db: Session, *, application_id: str, ip: str, user_age
     return {
         "found": found,
         "application_id": application_id,
-        "data_updated_at": snapshot.finished_at or snapshot.started_at,
+        "data_updated_at": _as_utc(snapshot.finished_at or snapshot.started_at),
         "deadline": settings.application_deadline_iso,
         "summary": {
             "directions_count": len(directions),

@@ -64,6 +64,27 @@ def build_client(db_session):
     return TestClient(app)
 
 
+def test_status_returns_timezone_aware_update_time(db_session):
+    from backend.models import Snapshot
+
+    db_session.add(
+        Snapshot(
+            status="ok",
+            started_at=datetime(2026, 7, 9, 15, 30, 0),
+            finished_at=datetime(2026, 7, 9, 15, 33, 30, 316465),
+            groups_count=49,
+            rows_count=45789,
+            unique_applications_count=12029,
+        )
+    )
+    db_session.commit()
+
+    response = build_client(db_session).get("/api/status")
+
+    assert response.status_code == 200
+    assert response.json()["updated_at"] == "2026-07-09T15:33:30.316465Z"
+
+
 def test_search_returns_directions_and_logs_request(db_session):
     from backend.models import SearchLog
 
