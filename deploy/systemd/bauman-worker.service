@@ -1,0 +1,12 @@
+[Unit]
+Description=Postupi MAI Bauman daily Gosuslugi import
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mai
+Group=mai
+WorkingDirectory=/opt/postupi-mai
+EnvironmentFile=/opt/postupi-mai/backend/.env
+ExecStart=/opt/postupi-mai/backend/.venv/bin/python -m backend.worker import-bauman

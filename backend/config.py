@@ -20,6 +20,7 @@ class Settings:
     )
     gosuslugi_year: int = int(os.environ.get("GOSUSLUGI_YEAR", "2026"))
     gosuslugi_org_id: int = int(os.environ.get("GOSUSLUGI_ORG_ID", "19"))
+    bauman_org_id: int = int(os.environ.get("BAUMAN_ORG_ID", "26"))
     request_timeout: int = int(os.environ.get("REQUEST_TIMEOUT", "20"))
     request_retries: int = int(os.environ.get("REQUEST_RETRIES", "3"))
     search_window_minutes: int = int(os.environ.get("SEARCH_WINDOW_MINUTES", "10"))

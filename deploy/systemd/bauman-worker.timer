@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Postupi MAI Bauman import daily
+
+[Timer]
+OnCalendar=*-*-* 09:30:00 Europe/Moscow
+Persistent=true
+Unit=bauman-worker.service
+
+[Install]
+WantedBy=timers.target

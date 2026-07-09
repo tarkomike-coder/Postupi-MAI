@@ -112,3 +112,63 @@ class SearchLog(Base):
     rate_limited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     response_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
+class BaumanSnapshot(Base):
+    __tablename__ = "bauman_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    groups_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rows_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unique_applications_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class BaumanCompetitionGroup(Base):
+    __tablename__ = "bauman_competition_groups"
+    __table_args__ = (UniqueConstraint("group_id", name="uq_bauman_group_gosuslugi_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    okso_code: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(500), nullable=False)
+    education_level: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    education_form: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    place_type: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    seats: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class BaumanApplicantRow(Base):
+    __tablename__ = "bauman_applicant_rows"
+    __table_args__ = (
+        Index("ix_bauman_rows_snapshot_application", "snapshot_id", "application_id"),
+        Index("ix_bauman_rows_snapshot_group", "snapshot_id", "group_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(ForeignKey("bauman_snapshots.id"), nullable=False, index=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("bauman_competition_groups.id"), nullable=False, index=True)
+    application_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    priority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    consent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    category: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class BaumanGroupStat(Base):
+    __tablename__ = "bauman_group_stats"
+    __table_args__ = (UniqueConstraint("snapshot_id", "group_id", name="uq_bauman_group_stat"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(ForeignKey("bauman_snapshots.id"), nullable=False, index=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("bauman_competition_groups.id"), nullable=False, index=True)
+    rows_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    no_consent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    min_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_score: Mapped[int | None] = mapped_column(Integer, nullable=True)

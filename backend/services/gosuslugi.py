@@ -127,12 +127,27 @@ class GosuslugiClient:
         raise GosuslugiError(str(last_error))
 
     def fetch_program_items(self) -> list[dict]:
-        return self._request_json(
-            "post",
-            ITEMS_URL.format(year=self.year),
-            params={"page": 0, "size": 500},
-            json={"orgId": self.org_id},
-        )
+        result: list[dict] = []
+        seen: set[int] = set()
+        page = 0
+        size = 500
+        while True:
+            items = self._request_json(
+                "post",
+                ITEMS_URL.format(year=self.year),
+                params={"page": page, "size": size},
+                json={"orgId": self.org_id},
+            )
+            if not items:
+                break
+            for item in items:
+                item_id = item.get("id")
+                if item_id in seen:
+                    continue
+                seen.add(item_id)
+                result.append(item)
+            page += 1
+        return result
 
     def fetch_applicants(self, group_id: int) -> list[dict]:
         data = self._request_json(

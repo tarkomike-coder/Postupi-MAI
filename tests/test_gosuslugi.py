@@ -79,3 +79,37 @@ def test_normalizes_applicants_and_keeps_zero_scores_but_skips_missing_id():
     assert rows[0].consent is True
     assert rows[1].application_id == "1002"
     assert rows[1].score is None
+
+
+def test_fetch_program_items_paginates_and_deduplicates(monkeypatch):
+    from backend.services.gosuslugi import GosuslugiClient
+
+    calls = []
+
+    class FakeSession:
+        headers = {}
+
+        def request(self, method, url, timeout, **kwargs):
+            del method, url, timeout
+            page = kwargs["params"]["page"]
+            calls.append(page)
+
+            class Response:
+                status_code = 200
+                text = ""
+
+                def json(self_inner):
+                    if page == 0:
+                        return [{"id": 1}, {"id": 2}]
+                    if page == 1:
+                        return [{"id": 2}, {"id": 3}]
+                    return []
+
+            return Response()
+
+    monkeypatch.setattr("requests.Session", FakeSession)
+
+    client = GosuslugiClient(org_id=26)
+
+    assert client.fetch_program_items() == [{"id": 1}, {"id": 2}, {"id": 3}]
+    assert calls == [0, 1, 2]

@@ -21,6 +21,7 @@
 ```powershell
 python -m pip install -r backend\requirements.txt
 python -m backend.worker import
+python -m backend.worker import-bauman
 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8013
 ```
 
@@ -75,6 +76,7 @@ python -m pytest -q
 - backend: `127.0.0.1:8013`;
 - база/роль PostgreSQL: `mai`;
 - systemd: `mai-backend.service`, `mai-worker.service`, `mai-worker.timer`;
+- Bauman systemd: `bauman-worker.service`, `bauman-worker.timer`;
 - nginx: `deploy/nginx/mai-tarko.conf`.
 
 Перед применением nginx-конфига проверить, что глобальная зона `perip` уже есть в `/etc/nginx/nginx.conf`, как в текущем `tarko-hub`.
