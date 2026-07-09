@@ -290,14 +290,14 @@ postgresql@16-main.service -> active
 
 ## Текущий Git-Статус
 
-На момент этого STATUS есть незакоммиченные локальные изменения:
+Последний опубликованный коммит:
 
-- `README.md`;
-- `STATUS.md`;
-- `backend/config.py`;
-- `site/app.js`;
-- `site/index.html`;
-- `tests/test_frontend_contract.py`;
-- `tests/test_config.py`.
+```text
+6da24ed Build MAI admissions analytics dashboard
+```
 
-Коммит не делался.
+Он запушен в `origin/main` (`tarkomike-coder/Postupi-MAI`).
+
+Локально может оставаться неотслеживаемая папка `artifacts/`.
+Это рабочая папка для временных превью, скриншотов и проверочных артефактов во время разработки.
+Она не является исходником продукта, не нужна для деплоя и намеренно не добавляется в Git.
