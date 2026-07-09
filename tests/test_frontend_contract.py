@@ -26,6 +26,7 @@ def test_frontend_exposes_compact_analytics_dashboard():
         "Кто может добавиться",
         "Динамика",
         "Места в списках",
+        "position-table",
         "Текущий расчёт",
         "по согласиям",
         "по каскаду",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from datetime import timedelta
+from math import log10
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -131,6 +132,25 @@ def _chance_from_gap(gap: int | None, *, seats: int | None, pending: int = 0) ->
     return _bounded_percent(base - pressure)
 
 
+def _chance_if_pending_confirms(
+    *,
+    cascade_percent: int,
+    pending: int,
+    seats: int | None,
+    real_position: int | None,
+) -> int:
+    if pending <= 0:
+        return cascade_percent
+    seats_value = max(1, int(seats or 1))
+    current_position = max(1, int(real_position or seats_value + 1))
+    cushion = max(0, seats_value - current_position + 1)
+    scale_penalty = 18 * log10(pending + 1)
+    density_penalty = min(22, (pending / seats_value) * 3)
+    cushion_bonus = min(18, cushion * 0.35)
+    penalty = max(0, scale_penalty + density_penalty - cushion_bonus)
+    return _bounded_percent(cascade_percent - penalty)
+
+
 def _chance_label(percent: int) -> str:
     if percent >= 85:
         return "высокая"
@@ -172,10 +192,11 @@ def _chance_block(metric: ApplicantDailyMetric | None, *, seats: int | None) -> 
     cascade = _cascade_slice(metric)
     current = _chance_from_gap(metric.consent_gap_to_budget, seats=seats)
     cascade_percent = _chance_from_gap(metric.real_gap_to_budget, seats=seats)
-    stress = _chance_from_gap(
-        metric.real_gap_to_budget,
-        seats=seats,
+    stress = _chance_if_pending_confirms(
+        cascade_percent=cascade_percent,
         pending=cascade["waiting_without_consent"],
+        seats=seats,
+        real_position=metric.real_competitor_position,
     )
     tempo = _bounded_percent((cascade_percent * 2 + stress + current) / 4)
     return {

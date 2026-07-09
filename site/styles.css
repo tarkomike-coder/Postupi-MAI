@@ -497,6 +497,49 @@ button:disabled {
   margin-top: 12px;
 }
 
+.position-table {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.position-table-head,
+.position-table-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(64px, 86px));
+  gap: 8px;
+  align-items: center;
+}
+
+.position-table-head {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.position-table-row {
+  min-height: 44px;
+  padding: 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #0d1b39;
+}
+
+.position-table-row strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.position-table-row span {
+  font-size: 18px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.position-cascade {
+  color: #7dffb2;
+}
+
 .note {
   margin: 16px 0 0;
   color: var(--muted);

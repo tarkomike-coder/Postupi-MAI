@@ -247,13 +247,34 @@ function renderCharts() {
       </section>
       <section class="chart-card">
         <h3>Места в списках</h3>
-        <div class="chart-box"><canvas id="chart-position"></canvas></div>
+        <div id="position-table" class="position-table"></div>
       </section>
       <section class="chart-card">
         <h3>Оценка шансов</h3>
         <div class="chart-box"><canvas id="chart-chance"></canvas></div>
       </section>
     </div>
+  `;
+}
+
+function renderPositionTable(directions) {
+  const target = document.getElementById("position-table");
+  if (!target) return;
+  target.innerHTML = `
+    <div class="position-table-head">
+      <span>Направление</span>
+      <span>общий</span>
+      <span>согласия</span>
+      <span>каскад</span>
+    </div>
+    ${directions.map((item) => `
+      <div class="position-table-row">
+        <strong>${shortName(item.name)}</strong>
+        <span>${item.facts.position ?? "-"}</span>
+        <span>${item.facts.consent_position ?? "-"}</span>
+        <span class="position-cascade">${item.facts.real_competitor_position ?? "-"}</span>
+      </div>
+    `).join("")}
   `;
 }
 
@@ -313,18 +334,7 @@ function mountCharts(data) {
     options,
   }));
 
-  chartInstances.push(new Chart(document.getElementById("chart-position"), {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        { label: "общий список", data: directions.map((item) => item.facts.position), backgroundColor: colors[0] },
-        { label: "по согласиям", data: directions.map((item) => item.facts.consent_position), backgroundColor: colors[1] },
-        { label: "по каскаду", data: directions.map((item) => item.facts.real_competitor_position), backgroundColor: colors[2] },
-      ],
-    },
-    options: { ...options, indexAxis: "y" },
-  }));
+  renderPositionTable(directions);
 
   chartInstances.push(new Chart(document.getElementById("chart-chance"), {
     type: "bar",

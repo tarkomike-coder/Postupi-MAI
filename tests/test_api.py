@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -218,3 +219,28 @@ def test_search_includes_chances_and_global_cascade_slice(db_session):
         "waiting_without_consent": 1,
     }
     assert direction["chance"]["cascade_percent"] >= direction["chance"]["stress_percent"]
+
+
+def test_pending_without_consent_scenario_varies_by_direction_pressure():
+    from backend.services.search import _chance_block
+
+    lower_pressure = SimpleNamespace(
+        consent_gap_to_budget=0,
+        real_gap_to_budget=0,
+        above_with_consent=10,
+        above_without_consent=64,
+        real_competitor_position=1,
+    )
+    higher_pressure = SimpleNamespace(
+        consent_gap_to_budget=0,
+        real_gap_to_budget=0,
+        above_with_consent=10,
+        above_without_consent=355,
+        real_competitor_position=1,
+    )
+
+    low = _chance_block(lower_pressure, seats=75)
+    high = _chance_block(higher_pressure, seats=155)
+
+    assert high["stress_percent"] < low["stress_percent"]
+    assert high["stress_percent"] != low["stress_percent"]
