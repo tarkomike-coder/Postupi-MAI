@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 
 
-@dataclass(frozen=True)
+@dataclass
 class Settings:
     database_url: str = os.environ.get(
         "DATABASE_URL",

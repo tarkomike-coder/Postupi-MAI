@@ -1,14 +1,24 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from .api import router as api_router
 from .database import init_db
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="Postupi MAI API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    del app
+    init_db()
+    yield
+
+
+def create_app(*, mount_static: bool = True) -> FastAPI:
+    app = FastAPI(title="Postupi MAI API", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -16,15 +26,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    @app.on_event("startup")
-    def _startup() -> None:
-        init_db()
+    app.include_router(api_router)
 
-    @app.get("/api/health")
-    def health() -> dict:
-        return {"status": "ok"}
-
-    if __name__ != "__main__":
+    if mount_static:
         app.mount("/", StaticFiles(directory="site", html=True), name="site")
 
     return app
