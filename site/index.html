@@ -4,8 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Поступление МАИ</title>
+  <meta name="description" content="Поиск заявления в очных бюджетных конкурсах МАИ по данным Госуслуг">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <main id="app">Поступление МАИ</main>
+  <header class="topbar">
+    <div>
+      <strong>Поступление МАИ</strong>
+      <span id="data-status">Загрузка даты данных...</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="search-panel" aria-labelledby="search-title">
+      <div class="search-copy">
+        <p class="eyebrow">Госуслуги · МАИ · очное бюджетное</p>
+        <h1 id="search-title">Найдите заявление в конкурсных списках МАИ</h1>
+        <p>Введите номер заявления. Сервис покажет направления, текущие позиции, согласия выше и историю изменений.</p>
+      </div>
+      <form id="search-form" class="search-form">
+        <label for="application-id">Номер заявления</label>
+        <div class="search-row">
+          <input id="application-id" name="application_id" inputmode="numeric" autocomplete="off" placeholder="Например, 1000001" required>
+          <button type="submit">Найти</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="message" class="message" hidden></section>
+    <section id="result" class="result" hidden></section>
+  </main>
+
+  <script src="/app.js"></script>
 </body>
 </html>
