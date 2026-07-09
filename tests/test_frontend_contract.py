@@ -20,6 +20,7 @@ def test_frontend_exposes_compact_analytics_dashboard():
 
     for expected in [
         "Оценка шансов",
+        "Реальные шансы",
         "Каскад поступающих",
         "Кто реально мешает",
         "Кто может добавиться",
@@ -29,6 +30,7 @@ def test_frontend_exposes_compact_analytics_dashboard():
         "по согласиям",
         "по каскаду",
         "если подтвердятся без согласия",
+        "real-chance",
     ]:
         assert expected in text
 

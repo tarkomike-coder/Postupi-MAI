@@ -131,15 +131,22 @@ function chanceItem(value, label) {
 function renderChance(data, best) {
   const chance = best.chance || {};
   return `
-    <section class="card">
-      <h3>Оценка шансов</h3>
-      <div class="chance-grid">
-        ${chanceItem(chance.current_percent ?? 1, "по согласиям")}
-        ${chanceItem(chance.cascade_percent ?? 1, "по каскаду")}
+    <section class="card chance-card">
+      <div class="chance-head">
+        <div>
+          <h3>Реальные шансы</h3>
+          <p><b>Каскад</b> всех поступающих: куда каждый попадёт с учётом согласий, баллов и приоритетов.</p>
+        </div>
+        <div class="real-chance">
+          <strong>${chance.cascade_percent ?? 1}%</strong>
+          <span>по текущему каскаду</span>
+        </div>
+      </div>
+      <div class="scenario-grid">
+        ${chanceItem(chance.current_percent ?? 1, "если считать только согласия")}
         ${chanceItem(chance.tempo_percent ?? 1, "по темпу изменений")}
         ${chanceItem(chance.stress_percent ?? 1, "если подтвердятся без согласия")}
       </div>
-      <p class="note"><b>Каскад</b> - это общий расчёт по всем поступающим: куда каждый попадёт с учётом согласий, баллов и приоритетов. Это главный ориентир для текущей картины.</p>
     </section>
   `;
 }

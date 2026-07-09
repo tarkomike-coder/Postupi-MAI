@@ -264,11 +264,57 @@ button:disabled {
   padding: 18px;
 }
 
-.chance-grid {
+.chance-grid,
+.scenario-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
+}
+
+.scenario-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.chance-card {
+  border-color: rgba(48, 209, 126, 0.62);
+  background: linear-gradient(135deg, rgba(16, 58, 52, 0.92), var(--panel));
+}
+
+.chance-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.chance-head p {
+  margin: 8px 0 0;
+  color: #d7eadd;
+  line-height: 1.45;
+}
+
+.real-chance {
+  min-height: 138px;
+  padding: 16px;
+  border: 1px solid rgba(48, 209, 126, 0.8);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(48, 209, 126, 0.26), rgba(48, 209, 126, 0.10));
+  box-shadow: 0 0 0 1px rgba(48, 209, 126, 0.18), 0 18px 44px rgba(48, 209, 126, 0.18);
+}
+
+.real-chance strong {
+  display: block;
+  color: #7dffb2;
+  font-size: 56px;
+  line-height: 1;
+}
+
+.real-chance span {
+  display: block;
+  margin-top: 9px;
+  color: #d7ffe8;
+  font-weight: 800;
 }
 
 .chance-item {
@@ -444,8 +490,13 @@ button:disabled {
   }
 
   .chance-grid,
+  .scenario-grid,
   .compact-metrics {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .chance-head {
+    grid-template-columns: 1fr;
   }
 
   .charts-grid {
@@ -468,6 +519,7 @@ button:disabled {
 
   .search-row,
   .chance-grid,
+  .scenario-grid,
   .compact-metrics {
     grid-template-columns: 1fr;
   }
