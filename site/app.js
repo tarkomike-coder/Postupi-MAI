@@ -56,14 +56,22 @@ function loadMetrika() {
   (function(m, e, t, r, i, k, a) {
     m[i] = m[i] || function() { (m[i].a = m[i].a || []).push(arguments); };
     m[i].l = 1 * new Date();
+    for (let j = 0; j < e.scripts.length; j += 1) {
+      if (e.scripts[j].src === r) return;
+    }
     k = e.createElement(t);
     a = e.getElementsByTagName(t)[0];
     k.async = 1;
     k.src = r;
     a.parentNode.insertBefore(k, a);
-  })(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+  })(window, document, "script", `https://mc.yandex.ru/metrika/tag.js?id=${window.MAI_METRIKA_ID}`, "ym");
   window.ym(window.MAI_METRIKA_ID, "init", {
+    ssr: true,
+    webvisor: true,
     clickmap: true,
+    ecommerce: "dataLayer",
+    referrer: document.referrer,
+    url: location.href,
     trackLinks: true,
     accurateTrackBounce: true,
   });
@@ -130,14 +138,15 @@ function renderPrediction(prediction) {
   return `
     <section class="prediction ${isPassing ? "prediction-pass" : "prediction-wait"}">
       <div>
-        <span class="prediction-label">По текущему каскаду</span>
-        <h3>${isPassing ? "Куда проходит" : "Ближайшее направление"}</h3>
+        <span class="prediction-label">Главный вывод по текущим данным</span>
+        <h3>${isPassing ? "Куда проходит заявление" : "Ближайшее направление"}</h3>
         <strong>${prediction.name}</strong>
-        <p>${prediction.okso_code || "ОКСО не указан"} · приоритет ${prediction.priority ?? "-"} · ${prediction.seats ?? "-"} мест на бюджете</p>
+        <p>${prediction.okso_code || "ОКСО не указан"} · приоритет ${prediction.priority ?? "-"} · ${prediction.seats ?? "-"} бюджетных мест. ${isPassing ? "Нижние приоритеты ниже отмечены как резерв." : "До прохода не хватает мест."}</p>
       </div>
       <div class="prediction-score">
-        <strong>${prediction.chance_percent ?? 1}%</strong>
-        <span>${isPassing ? "реальные шансы" : `нужно ${prediction.needed_places} мест`}</span>
+        <strong>${isPassing ? "проходит" : `+${prediction.needed_places}`}</strong>
+        <span>${isPassing ? "по текущему расчету" : "мест нужно"}</span>
+        <em>устойчивость: ${prediction.chance_percent ?? 1}%</em>
       </div>
     </section>
   `;
@@ -158,19 +167,54 @@ function renderChance(data, best) {
     <section class="card chance-card">
       <div class="chance-head">
         <div>
-          <h3>Реальные шансы</h3>
-          <p><b>Каскад</b> всех поступающих: куда каждый попадёт с учётом согласий, баллов и приоритетов.</p>
+          <h3>Оценка устойчивости</h3>
+          <p><b>Каскад</b> всех поступающих: куда каждый попадает с учетом согласий, баллов и приоритетов. Процент ниже - расчетная устойчивость текущего положения, не гарантия зачисления.</p>
         </div>
         <div class="real-chance">
           <strong>${chance.cascade_percent ?? 1}%</strong>
-          <span>по текущему каскаду</span>
+          <span>устойчивость позиции</span>
         </div>
       </div>
       <div class="scenario-grid">
         ${chanceItem(chance.current_percent ?? 1, "если считать только согласия")}
         ${chanceItem(chance.tempo_percent ?? 1, "по темпу изменений")}
-        ${chanceItem(chance.stress_percent ?? 1, "если подтвердятся без согласия")}
+        ${chanceItem(chance.stress_percent ?? 1, "риск новых согласий выше")}
       </div>
+    </section>
+  `;
+}
+
+function renderWhyPasses(direction, prediction) {
+  if (!direction || !prediction) return "";
+  const f = direction.facts || {};
+  const c = direction.cascade || {};
+  const passing = prediction.status === "passing";
+  return `
+    <section class="card why-card">
+      <h3>${passing ? "Почему проходит" : "Почему не проходит"}</h3>
+      <div class="why-grid">
+        <div><strong>${direction.seats ?? "-"}</strong><span>бюджетных мест</span></div>
+        <div><strong>${f.real_competitor_position ?? "-"}</strong><span>место по каскаду</span></div>
+        <div><strong>${c.real_competitors_above ?? 0}</strong><span>реально впереди</span></div>
+        <div><strong>${f.consent_position ?? "-"}</strong><span>место по согласиям</span></div>
+        <div><strong>${c.leaving_by_cascade ?? 0}</strong><span>уходят выше</span></div>
+        <div><strong>${c.waiting_without_consent ?? 0}</strong><span>без согласия выше</span></div>
+      </div>
+      <p>${passing ? "Сейчас заявление находится внутри числа бюджетных мест после расчета приоритетов. Остальные направления ниже по приоритету работают как резерв." : "Сейчас по расчету нужно, чтобы освободились места или изменилась картина согласий."}</p>
+    </section>
+  `;
+}
+
+function renderRiskNote() {
+  return `
+    <section class="card risk-note">
+      <h3>Что может изменить ситуацию</h3>
+      <ul>
+        <li>новые согласия от людей выше в списке;</li>
+        <li>обновление данных на Госуслугах;</li>
+        <li>уточнение льготных, целевых и БВИ-позиций;</li>
+        <li>изменение приоритетов, если оно доступно поступающим.</li>
+      </ul>
     </section>
   `;
 }
@@ -186,29 +230,39 @@ function renderTerms() {
   `;
 }
 
-function renderDirections(directions) {
+function renderDirections(directions, prediction) {
   return `
     <h2 class="section-title">Направления</h2>
     <div class="directions">
       ${directions.map((item) => {
         const f = item.facts;
+        const isSelected = prediction?.status === "passing" && prediction.group_id === item.group_id;
+        const isReserve = prediction?.status === "passing" && !isSelected;
+        const reservePasses = isReserve && (f.real_gap_to_budget ?? 9999) <= 0;
+        const statusText = isSelected
+          ? "основной проход"
+          : reservePasses
+            ? "резерв: проходит"
+            : isReserve
+              ? "резерв"
+              : missingText(f.real_gap_to_budget);
         return `
-          <article class="direction-card">
+          <article class="direction-card ${isSelected ? "direction-primary" : ""} ${isReserve ? "direction-reserve" : ""}">
             <div class="direction-head">
               <div>
                 <h3>${item.name}</h3>
                 <div class="sub">${item.okso_code || "ОКСО не указан"} · ${item.seats ?? "-"} мест на бюджете · приоритет ${f.priority ?? "-"}</div>
               </div>
-              <span class="pill">${item.chance?.cascade_percent ?? 1}% по каскаду</span>
+              <span class="pill">${isSelected ? "основной" : isReserve ? "резерв" : `${item.chance?.cascade_percent ?? 1}%`}</span>
             </div>
             <div class="compact-metrics">
               <div class="metric"><strong>${f.position ?? "-"}</strong><span>общий список</span></div>
               <div class="metric"><strong>${f.consent_position ?? "-"}</strong><span>по согласиям</span></div>
               <div class="metric"><strong>${f.real_competitor_position ?? "-"}</strong><span>по каскаду</span></div>
-              <div class="${statusMetricClass(f.real_gap_to_budget)}"><strong>${missingText(f.real_gap_to_budget)}</strong><span>Текущий расчёт</span></div>
+              <div class="${reservePasses ? "metric status-pass status-reserve-pass" : isReserve ? "metric status-reserve" : statusMetricClass(f.real_gap_to_budget)}"><strong>${statusText}</strong><span>${reservePasses ? "если станет первым" : "Текущий расчёт"}</span></div>
             </div>
             <div class="direction-foot">
-              <span>${directionStatus(item)}. Перед заявлением: ${item.cascade?.real_competitors_above ?? 0} реально мешают, ${item.cascade?.leaving_by_cascade ?? 0} уходят по каскаду, ${item.cascade?.waiting_without_consent ?? 0} без согласия.</span>
+              <span>${isReserve ? "Резервное направление: будет актуально, если верхний приоритет не сработает." : directionStatus(item)} Перед заявлением: ${item.cascade?.real_competitors_above ?? 0} реально мешают, ${item.cascade?.leaving_by_cascade ?? 0} уходят выше, ${item.cascade?.waiting_without_consent ?? 0} без согласия.</span>
             </div>
           </article>
         `;
@@ -254,14 +308,14 @@ function renderCascade(directions) {
 
 function renderCharts() {
   return `
-    <h2 class="section-title">Динамика</h2>
+    <h2 class="section-title">Сравнение направлений</h2>
     <div class="charts-grid">
       <section class="chart-card">
         <h3>Кто реально мешает</h3>
         <div class="chart-box"><canvas id="chart-real"></canvas></div>
       </section>
       <section class="chart-card">
-        <h3>Кто может добавиться</h3>
+        <h3>Кто может добавить риск</h3>
         <div class="chart-box"><canvas id="chart-waiting"></canvas></div>
       </section>
       <section class="chart-card">
@@ -269,7 +323,7 @@ function renderCharts() {
         <div id="position-table" class="position-table"></div>
       </section>
       <section class="chart-card">
-        <h3>Оценка шансов</h3>
+        <h3>Оценка устойчивости</h3>
         <div class="chart-box"><canvas id="chart-chance"></canvas></div>
       </section>
     </div>
@@ -282,9 +336,9 @@ function renderPositionTable(directions) {
   target.innerHTML = `
     <div class="position-table-head">
       <span>Направление</span>
-      <span>общий</span>
-      <span>согласия</span>
-      <span>каскад</span>
+      <span>место в общем списке</span>
+      <span>место среди согласий</span>
+      <span>место по каскаду</span>
     </div>
     ${directions.map((item) => `
       <div class="position-table-row">
@@ -342,26 +396,26 @@ function mountCharts(data) {
     options,
   }));
 
+  renderPositionTable(directions);
+
   chartInstances.push(new Chart(document.getElementById("chart-waiting"), {
     type: "bar",
     data: {
       labels,
       datasets: [
-        { label: "без согласия перед заявлением", data: directions.map((item) => item.cascade?.waiting_without_consent || 0), backgroundColor: "#4d8cff" },
+        { label: "без согласия выше", data: directions.map((item) => item.cascade?.waiting_without_consent || 0), backgroundColor: "#4d8cff" },
       ],
     },
     options,
   }));
-
-  renderPositionTable(directions);
 
   chartInstances.push(new Chart(document.getElementById("chart-chance"), {
     type: "bar",
     data: {
       labels,
       datasets: [
-        { label: "по каскаду, %", data: directions.map((item) => item.chance?.cascade_percent || 1), backgroundColor: colors[4] },
-        { label: "если подтвердятся без согласия, %", data: directions.map((item) => item.chance?.stress_percent || 1), backgroundColor: colors[5] },
+        { label: "устойчивость позиции, %", data: directions.map((item) => item.chance?.cascade_percent || 1), backgroundColor: colors[4] },
+        { label: "при новых согласиях выше, %", data: directions.map((item) => item.chance?.stress_percent || 1), backgroundColor: colors[5] },
       ],
     },
     options,
@@ -387,6 +441,9 @@ function renderResult(data) {
 
   trackGoal("search_found");
   const best = bestDirection(data.directions);
+  const predictedDirection = data.prediction
+    ? data.directions.find((item) => item.group_id === data.prediction.group_id) || best
+    : best;
   result.hidden = false;
   result.innerHTML = `
     <section class="summary">
@@ -401,11 +458,12 @@ function renderResult(data) {
       </div>
     </section>
     ${renderPrediction(data.prediction)}
+    ${renderWhyPasses(predictedDirection, data.prediction)}
     <div class="overview-grid">
       ${isAfterDeadline ? renderTerms() : renderChance(data, best)}
-      ${renderTerms()}
+      ${renderRiskNote()}
     </div>
-    ${renderDirections(data.directions)}
+    ${renderDirections(data.directions, data.prediction)}
     ${isAfterDeadline ? "" : renderCascade(data.directions)}
     ${renderCharts()}
     <p class="note">Это аналитика по текущим данным Госуслуг.</p>

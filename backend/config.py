@@ -9,12 +9,16 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 
 
+def required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"{name} is required")
+    return value
+
+
 @dataclass
 class Settings:
-    database_url: str = os.environ.get(
-        "DATABASE_URL",
-        f"sqlite:///{BASE_DIR / 'mai_local.db'}",
-    )
+    database_url: str = required_env("DATABASE_URL")
     raw_snapshots_dir: Path = Path(
         os.environ.get("RAW_SNAPSHOTS_DIR", PROJECT_ROOT / "data" / "raw")
     )

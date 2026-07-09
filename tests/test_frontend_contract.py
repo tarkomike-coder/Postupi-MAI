@@ -19,22 +19,29 @@ def test_frontend_exposes_compact_analytics_dashboard():
     text = _public_text()
 
     for expected in [
-        "Оценка шансов",
-        "Реальные шансы",
-        "По текущему каскаду",
-        "Куда проходит",
+        "Аналитика поступления по номеру заявления",
+        "Главный вывод по текущим данным",
+        "Куда проходит заявление",
+        "Оценка устойчивости",
+        "Почему проходит",
+        "Что может изменить ситуацию",
         "Каскад поступающих",
         "Кто реально мешает",
-        "Кто может добавиться",
-        "Динамика",
+        "Кто может добавить риск",
+        "Сравнение направлений",
         "Места в списках",
+        "место в общем списке",
+        "место среди согласий",
+        "место по каскаду",
+        "резерв: проходит",
+        "если станет первым",
         "position-table",
         "Текущий расчёт",
         "по согласиям",
         "по каскаду",
-        "если подтвердятся без согласия",
         "real-chance",
         "status-pass",
+        "status-reserve-pass",
     ]:
         assert expected in text
 
@@ -47,6 +54,22 @@ def test_frontend_copy_does_not_use_banned_terms():
 
     for banned in ["пока", "snapshot", "pipeline", "baseline", "successful snapshot"]:
         assert banned not in text
+
+
+def test_frontend_connects_yandex_metrika_counter():
+    text = _public_text()
+
+    assert "window.MAI_METRIKA_ID = 110548873" in text
+    assert "mc.yandex.ru/metrika/tag.js" in text
+    assert "mc.yandex.ru/watch/110548873" in text
+    assert "webvisor: true" in text
+
+
+def test_yandex_webmaster_verification_file():
+    text = (ROOT / "site" / "yandex_3373b3a388de174b.html").read_text(encoding="utf-8")
+
+    assert "Verification: 3373b3a388de174b" in text
+    assert "charset=UTF-8" in text
 
 
 def test_frontend_copy_avoids_confusing_admissions_terms():
