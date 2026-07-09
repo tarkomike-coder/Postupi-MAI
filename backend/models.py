@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -8,12 +8,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 
 
+def utcnow() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 class Snapshot(Base):
     __tablename__ = "mai_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     groups_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     rows_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -98,7 +102,7 @@ class SearchLog(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, index=True)
     ip: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
     application_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
