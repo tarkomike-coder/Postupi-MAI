@@ -1,0 +1,16 @@
+[Unit]
+Description=Postupi MAI FastAPI backend
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=mai
+Group=mai
+WorkingDirectory=/opt/postupi-mai
+EnvironmentFile=/opt/postupi-mai/backend/.env
+ExecStart=/opt/postupi-mai/backend/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8013
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
