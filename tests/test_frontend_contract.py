@@ -21,12 +21,14 @@ def test_frontend_exposes_compact_analytics_dashboard():
     for expected in [
         "Оценка шансов",
         "Каскад поступающих",
-        "Состав конкуренции",
+        "Кто реально мешает",
+        "Кто может добавиться",
         "Динамика",
-        "Прогноз проходного балла",
-        "Не хватает мест",
+        "Места в списках",
+        "Текущий расчёт",
         "по согласиям",
         "по каскаду",
+        "если подтвердятся без согласия",
     ]:
         assert expected in text
 
@@ -38,4 +40,11 @@ def test_frontend_copy_does_not_use_banned_terms():
     text = _public_text().lower()
 
     for banned in ["пока", "snapshot", "pipeline", "baseline", "successful snapshot"]:
+        assert banned not in text
+
+
+def test_frontend_copy_avoids_confusing_admissions_terms():
+    text = _public_text().lower()
+
+    for banned in ["1422086", "напряжённый сценарий", "проходной по каскаду", "в зоне"]:
         assert banned not in text

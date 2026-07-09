@@ -94,14 +94,14 @@ function shortName(name) {
 
 function missingText(gap) {
   if (gap === null || gap === undefined) return "нет оценки";
-  return gap <= 0 ? "в зоне" : `не хватает ${gap}`;
+  return gap <= 0 ? "проходит" : `нужно ${gap} мест`;
 }
 
 function directionStatus(item) {
   const gap = item.facts.real_gap_to_budget;
   if (gap === null || gap === undefined) return "нужны новые данные для оценки";
-  if (gap <= 0) return "в бюджетной зоне по каскаду";
-  return `за зоной по каскаду, ${missingText(gap)} мест`;
+  if (gap <= 0) return "проходит в текущем расчёте";
+  return `нужно, чтобы освободилось ${gap} мест`;
 }
 
 function bestDirection(directions) {
@@ -137,9 +137,9 @@ function renderChance(data, best) {
         ${chanceItem(chance.current_percent ?? 1, "по согласиям")}
         ${chanceItem(chance.cascade_percent ?? 1, "по каскаду")}
         ${chanceItem(chance.tempo_percent ?? 1, "по темпу изменений")}
-        ${chanceItem(chance.stress_percent ?? 1, "напряжённый сценарий")}
+        ${chanceItem(chance.stress_percent ?? 1, "если подтвердятся без согласия")}
       </div>
-      <p class="note">Главный ориентир - каскад: общий расчёт по всем заявлениям, согласиям и приоритетам. Проценты помогают сравнивать сценарии, а не заменяют конкурсный список.</p>
+      <p class="note"><b>Каскад</b> - это общий расчёт по всем поступающим: куда каждый попадёт с учётом согласий, баллов и приоритетов. Это главный ориентир для текущей картины.</p>
     </section>
   `;
 }
@@ -149,8 +149,8 @@ function renderTerms() {
     <section class="card legend-note">
       <h3>Как читать числа</h3>
       <div><b>по согласиям</b> - место среди тех, кто уже подал согласие на это направление.</div>
-      <div><b>по каскаду</b> - место после общего расчёта приоритетов: часть людей выше уходит на более желанные направления.</div>
-      <div><b>Не хватает мест</b> - сколько позиций отделяет от бюджетной зоны по каскаду. “В зоне” значит, что запас есть в текущем расчёте.</div>
+      <div><b>по каскаду</b> - место после общего расчёта приоритетов: часть людей уходит на более желанные направления.</div>
+      <div><b>Текущий расчёт</b> - проходит ли заявление сейчас. Если не проходит, указано, сколько мест должно освободиться.</div>
     </section>
   `;
 }
@@ -166,7 +166,7 @@ function renderDirections(directions) {
             <div class="direction-head">
               <div>
                 <h3>${item.name}</h3>
-                <div class="sub">${item.okso_code || "ОКСО не указан"} · ${item.seats ?? "-"} бюджетных мест · приоритет ${f.priority ?? "-"}</div>
+                <div class="sub">${item.okso_code || "ОКСО не указан"} · ${item.seats ?? "-"} мест на бюджете · приоритет ${f.priority ?? "-"}</div>
               </div>
               <span class="pill">${item.chance?.cascade_percent ?? 1}% по каскаду</span>
             </div>
@@ -174,11 +174,10 @@ function renderDirections(directions) {
               <div class="metric"><strong>${f.position ?? "-"}</strong><span>общий список</span></div>
               <div class="metric"><strong>${f.consent_position ?? "-"}</strong><span>по согласиям</span></div>
               <div class="metric"><strong>${f.real_competitor_position ?? "-"}</strong><span>по каскаду</span></div>
-              <div class="metric"><strong>${missingText(f.real_gap_to_budget)}</strong><span>Не хватает мест</span></div>
+              <div class="metric"><strong>${missingText(f.real_gap_to_budget)}</strong><span>Текущий расчёт</span></div>
             </div>
             <div class="direction-foot">
-              <span>${directionStatus(item)}. Выше: ${item.cascade?.real_competitors_above ?? 0} мешают, ${item.cascade?.leaving_by_cascade ?? 0} уходят по каскаду, ${item.cascade?.waiting_without_consent ?? 0} без согласия.</span>
-              <span class="pill">проходной по каскаду: ${item.cutoff?.cascade ?? "-"}</span>
+              <span>${directionStatus(item)}. Перед заявлением: ${item.cascade?.real_competitors_above ?? 0} реально мешают, ${item.cascade?.leaving_by_cascade ?? 0} уходят по каскаду, ${item.cascade?.waiting_without_consent ?? 0} без согласия.</span>
             </div>
           </article>
         `;
@@ -227,20 +226,20 @@ function renderCharts() {
     <h2 class="section-title">Динамика</h2>
     <div class="charts-grid">
       <section class="chart-card">
-        <h3>Состав конкуренции</h3>
-        <div class="chart-box"><canvas id="chart-composition"></canvas></div>
+        <h3>Кто реально мешает</h3>
+        <div class="chart-box"><canvas id="chart-real"></canvas></div>
       </section>
       <section class="chart-card">
-        <h3>Позиции по направлениям</h3>
+        <h3>Кто может добавиться</h3>
+        <div class="chart-box"><canvas id="chart-waiting"></canvas></div>
+      </section>
+      <section class="chart-card">
+        <h3>Места в списках</h3>
         <div class="chart-box"><canvas id="chart-position"></canvas></div>
       </section>
       <section class="chart-card">
-        <h3>Прогноз проходного балла</h3>
-        <div class="chart-box"><canvas id="chart-cutoff"></canvas></div>
-      </section>
-      <section class="chart-card">
-        <h3>Не хватает мест</h3>
-        <div class="chart-box"><canvas id="chart-gap"></canvas></div>
+        <h3>Оценка шансов</h3>
+        <div class="chart-box"><canvas id="chart-chance"></canvas></div>
       </section>
     </div>
   `;
@@ -279,61 +278,52 @@ function mountCharts(data) {
   const labels = directions.map((item) => shortName(item.name));
   const options = chartDefaults();
 
-  chartInstances.push(new Chart(document.getElementById("chart-composition"), {
+  chartInstances.push(new Chart(document.getElementById("chart-real"), {
     type: "bar",
     data: {
       labels,
       datasets: [
-        { label: "мешают", data: directions.map((item) => item.cascade?.real_competitors_above || 0), backgroundColor: "#ff5c62" },
+        { label: "реально перед заявлением", data: directions.map((item) => item.cascade?.real_competitors_above || 0), backgroundColor: "#ff5c62" },
         { label: "уходят по каскаду", data: directions.map((item) => item.cascade?.leaving_by_cascade || 0), backgroundColor: "#ffb648" },
-        { label: "без согласия", data: directions.map((item) => item.cascade?.waiting_without_consent || 0), backgroundColor: "#4d8cff" },
       ],
     },
-    options: { ...options, scales: { ...options.scales, x: { ...options.scales.x, stacked: true }, y: { ...options.scales.y, stacked: true } } },
+    options,
+  }));
+
+  chartInstances.push(new Chart(document.getElementById("chart-waiting"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "без согласия перед заявлением", data: directions.map((item) => item.cascade?.waiting_without_consent || 0), backgroundColor: "#4d8cff" },
+      ],
+    },
+    options,
   }));
 
   chartInstances.push(new Chart(document.getElementById("chart-position"), {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        { label: "общий список", data: directions.map((item) => item.facts.position), borderColor: colors[0], backgroundColor: colors[0], tension: 0.25 },
-        { label: "по согласиям", data: directions.map((item) => item.facts.consent_position), borderColor: colors[1], backgroundColor: colors[1], tension: 0.25 },
-        { label: "по каскаду", data: directions.map((item) => item.facts.real_competitor_position), borderColor: colors[2], backgroundColor: colors[2], tension: 0.25 },
-      ],
-    },
-    options,
-  }));
-
-  chartInstances.push(new Chart(document.getElementById("chart-cutoff"), {
     type: "bar",
     data: {
       labels,
       datasets: [
-        { label: "общий список", data: directions.map((item) => item.cutoff?.general), backgroundColor: colors[0] },
-        { label: "согласия", data: directions.map((item) => item.cutoff?.consent), backgroundColor: colors[1] },
-        { label: "каскад", data: directions.map((item) => item.cutoff?.cascade), backgroundColor: colors[2] },
+        { label: "общий список", data: directions.map((item) => item.facts.position), backgroundColor: colors[0] },
+        { label: "по согласиям", data: directions.map((item) => item.facts.consent_position), backgroundColor: colors[1] },
+        { label: "по каскаду", data: directions.map((item) => item.facts.real_competitor_position), backgroundColor: colors[2] },
       ],
     },
-    options,
+    options: { ...options, indexAxis: "y" },
   }));
 
-  chartInstances.push(new Chart(document.getElementById("chart-gap"), {
-    type: "line",
+  chartInstances.push(new Chart(document.getElementById("chart-chance"), {
+    type: "bar",
     data: {
       labels,
       datasets: [
-        { label: "не хватает мест", data: directions.map((item) => Math.max(0, item.facts.real_gap_to_budget || 0)), borderColor: colors[3], backgroundColor: colors[3], tension: 0.25 },
-        { label: "шанс по каскаду, %", data: directions.map((item) => item.chance?.cascade_percent || 1), borderColor: colors[4], backgroundColor: colors[4], tension: 0.25, yAxisID: "y1" },
+        { label: "по каскаду, %", data: directions.map((item) => item.chance?.cascade_percent || 1), backgroundColor: colors[4] },
+        { label: "если подтвердятся без согласия, %", data: directions.map((item) => item.chance?.stress_percent || 1), backgroundColor: colors[5] },
       ],
     },
-    options: {
-      ...options,
-      scales: {
-        ...options.scales,
-        y1: { position: "right", ticks: { color: "#9fb0cf" }, grid: { drawOnChartArea: false } },
-      },
-    },
+    options,
   }));
 }
 
@@ -376,7 +366,7 @@ function renderResult(data) {
     ${renderDirections(data.directions)}
     ${isAfterDeadline ? "" : renderCascade(data.directions)}
     ${renderCharts()}
-    <p class="note">Это аналитика по текущим данным Госуслуг, не официальный результат зачисления.</p>
+    <p class="note">Это аналитика по текущим данным Госуслуг.</p>
   `;
   mountCharts(data);
 }
