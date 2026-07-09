@@ -124,6 +124,25 @@ function applicantSummary(directions) {
   return `Балл: ${score}. Согласие: ${consentCount ? `есть на ${consentCount} направл.` : "нет"}.`;
 }
 
+function renderPrediction(prediction) {
+  if (!prediction) return "";
+  const isPassing = prediction.status === "passing";
+  return `
+    <section class="prediction ${isPassing ? "prediction-pass" : "prediction-wait"}">
+      <div>
+        <span class="prediction-label">По текущему каскаду</span>
+        <h3>${isPassing ? "Куда проходит" : "Ближайшее направление"}</h3>
+        <strong>${prediction.name}</strong>
+        <p>${prediction.okso_code || "ОКСО не указан"} · приоритет ${prediction.priority ?? "-"} · ${prediction.seats ?? "-"} мест на бюджете</p>
+      </div>
+      <div class="prediction-score">
+        <strong>${prediction.chance_percent ?? 1}%</strong>
+        <span>${isPassing ? "реальные шансы" : `нужно ${prediction.needed_places} мест`}</span>
+      </div>
+    </section>
+  `;
+}
+
 function chanceItem(value, label) {
   return `
     <div class="chance-item">
@@ -381,6 +400,7 @@ function renderResult(data) {
         <span class="pill">${daysLeftText(data)}</span>
       </div>
     </section>
+    ${renderPrediction(data.prediction)}
     <div class="overview-grid">
       ${isAfterDeadline ? renderTerms() : renderChance(data, best)}
       ${renderTerms()}

@@ -253,6 +253,45 @@ def _cutoff_block(db: Session, *, snapshot_id: int, group_id: int, seats: int | 
     }
 
 
+def _prediction(directions: list[dict]) -> dict | None:
+    if not directions:
+        return None
+
+    def _item_payload(item: dict, status: str) -> dict:
+        facts = item["facts"]
+        gap = facts.get("real_gap_to_budget")
+        return {
+            "status": status,
+            "group_id": item["group_id"],
+            "name": item["name"],
+            "okso_code": item["okso_code"],
+            "priority": facts.get("priority"),
+            "seats": item["seats"],
+            "chance_percent": item.get("chance", {}).get("cascade_percent"),
+            "needed_places": 0 if gap is None else max(0, gap),
+        }
+
+    passing = [item for item in directions if item["facts"].get("real_gap_to_budget") == 0]
+    if passing:
+        selected = sorted(
+            passing,
+            key=lambda item: (
+                item["facts"].get("priority") or 999,
+                item["facts"].get("real_competitor_position") or 9999,
+            ),
+        )[0]
+        return _item_payload(selected, "passing")
+
+    selected = sorted(
+        directions,
+        key=lambda item: (
+            item["facts"].get("real_gap_to_budget") if item["facts"].get("real_gap_to_budget") is not None else 9999,
+            item["facts"].get("priority") or 999,
+        ),
+    )[0]
+    return _item_payload(selected, "not_passing")
+
+
 def build_search_response(db: Session, *, application_id: str, ip: str, user_agent: str | None) -> dict:
     started = time.perf_counter()
     _check_rate_limit(db, ip=ip, application_id=application_id)
@@ -332,6 +371,7 @@ def build_search_response(db: Session, *, application_id: str, ip: str, user_age
             "directions_count": len(directions),
             "status": _summary_for_directions(directions),
         },
+        "prediction": _prediction(directions),
         "directions": directions,
         "history": _history(db, application_id),
     }

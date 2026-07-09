@@ -221,6 +221,101 @@ def test_search_includes_chances_and_global_cascade_slice(db_session):
     assert direction["chance"]["cascade_percent"] >= direction["chance"]["stress_percent"]
 
 
+def test_prediction_chooses_passing_direction_by_selected_priority(db_session):
+    from backend.models import ApplicantDailyMetric, ApplicantRow, CompetitionGroup, Snapshot
+
+    snapshot = Snapshot(status="ok", started_at=datetime(2026, 7, 10, 9, 0), finished_at=datetime(2026, 7, 10, 9, 5))
+    lower_priority = CompetitionGroup(group_id=901, okso_code="09.03.01", name="Нижний приоритет", seats=2)
+    higher_priority = CompetitionGroup(group_id=902, okso_code="09.03.02", name="Высший приоритет", seats=2)
+    db_session.add_all([snapshot, lower_priority, higher_priority])
+    db_session.flush()
+    for group, priority, real_position in [(lower_priority, 2, 1), (higher_priority, 1, 2)]:
+        db_session.add(
+            ApplicantRow(
+                snapshot_id=snapshot.id,
+                group_id=group.id,
+                application_id="1001",
+                position=10,
+                score=280,
+                priority=priority,
+                consent=True,
+            )
+        )
+        db_session.add(
+            ApplicantDailyMetric(
+                snapshot_id=snapshot.id,
+                group_id=group.id,
+                application_id="1001",
+                position=10,
+                consent_position=2,
+                real_competitor_position=real_position,
+                above_with_consent=1,
+                above_without_consent=5,
+                general_gap_to_budget=8,
+                consent_gap_to_budget=0,
+                real_gap_to_budget=0,
+            )
+        )
+    db_session.commit()
+    client = build_client(db_session)
+
+    response = client.post("/api/search", json={"application_id": "1001"})
+
+    assert response.status_code == 200
+    prediction = response.json()["prediction"]
+    assert prediction["status"] == "passing"
+    assert prediction["name"] == "Высший приоритет"
+    assert prediction["priority"] == 1
+    assert prediction["needed_places"] == 0
+
+
+def test_prediction_reports_closest_direction_when_none_passes(db_session):
+    from backend.models import ApplicantDailyMetric, ApplicantRow, CompetitionGroup, Snapshot
+
+    snapshot = Snapshot(status="ok", started_at=datetime(2026, 7, 10, 9, 0), finished_at=datetime(2026, 7, 10, 9, 5))
+    far = CompetitionGroup(group_id=911, name="Далеко", seats=2)
+    close = CompetitionGroup(group_id=912, name="Ближе", seats=2)
+    db_session.add_all([snapshot, far, close])
+    db_session.flush()
+    for group, gap in [(far, 8), (close, 2)]:
+        db_session.add(
+            ApplicantRow(
+                snapshot_id=snapshot.id,
+                group_id=group.id,
+                application_id="1001",
+                position=20,
+                score=260,
+                priority=1,
+                consent=False,
+            )
+        )
+        db_session.add(
+            ApplicantDailyMetric(
+                snapshot_id=snapshot.id,
+                group_id=group.id,
+                application_id="1001",
+                position=20,
+                consent_position=15,
+                real_competitor_position=(group.seats or 2) + gap,
+                above_with_consent=10,
+                above_without_consent=20,
+                general_gap_to_budget=18,
+                consent_gap_to_budget=13,
+                real_gap_to_budget=gap,
+            )
+        )
+    db_session.commit()
+    client = build_client(db_session)
+
+    response = client.post("/api/search", json={"application_id": "1001"})
+
+    assert response.status_code == 200
+    prediction = response.json()["prediction"]
+    assert prediction["status"] == "not_passing"
+    assert prediction["name"] == "Ближе"
+    assert prediction["needed_places"] == 2
+
+
 def test_pending_without_consent_scenario_varies_by_direction_pressure():
     from backend.services.search import _chance_block
 
