@@ -81,6 +81,40 @@ def _summary_for_directions(directions: list[dict], *, deadline_passed: bool = F
     return "Сейчас все найденные направления вне бюджетной зоны."
 
 
+def _history(db: Session, application_id: str) -> list[dict]:
+    rows = (
+        db.query(ApplicantDailyMetric, CompetitionGroup, Snapshot)
+        .join(CompetitionGroup, CompetitionGroup.id == ApplicantDailyMetric.group_id)
+        .join(Snapshot, Snapshot.id == ApplicantDailyMetric.snapshot_id)
+        .filter(ApplicantDailyMetric.application_id == application_id, Snapshot.status == "ok")
+        .order_by(CompetitionGroup.name.asc(), Snapshot.started_at.asc(), Snapshot.id.asc())
+        .all()
+    )
+    grouped: dict[int, dict] = {}
+    for metric, group, snapshot in rows:
+        entry = grouped.setdefault(
+            group.id,
+            {
+                "group_id": group.group_id,
+                "name": group.name,
+                "okso_code": group.okso_code,
+                "points": [],
+            },
+        )
+        entry["points"].append(
+            {
+                "date": (snapshot.finished_at or snapshot.started_at).isoformat(),
+                "position": metric.position,
+                "consent_position": metric.consent_position,
+                "real_competitor_position": metric.real_competitor_position,
+                "above_with_consent": metric.above_with_consent,
+                "above_without_consent": metric.above_without_consent,
+                "real_gap_to_budget": metric.real_gap_to_budget,
+            }
+        )
+    return list(grouped.values())
+
+
 def build_search_response(db: Session, *, application_id: str, ip: str, user_agent: str | None) -> dict:
     started = time.perf_counter()
     _check_rate_limit(db, ip=ip, application_id=application_id)
@@ -158,4 +192,5 @@ def build_search_response(db: Session, *, application_id: str, ip: str, user_age
             "status": _summary_for_directions(directions),
         },
         "directions": directions,
+        "history": _history(db, application_id),
     }

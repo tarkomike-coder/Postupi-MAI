@@ -110,3 +110,49 @@ def test_search_rate_limits_many_distinct_numbers(db_session, monkeypatch):
     assert limited.status_code == 429
     assert limited.json()["error"] == "rate_limited"
     assert limited.json()["retry_after_seconds"] > 0
+
+
+def test_search_includes_history_points(db_session):
+    from backend.models import ApplicantDailyMetric, ApplicantRow, CompetitionGroup, Snapshot
+
+    first = Snapshot(status="ok", started_at=datetime(2026, 7, 9, 9, 0), finished_at=datetime(2026, 7, 9, 9, 5))
+    second = Snapshot(status="ok", started_at=datetime(2026, 7, 10, 9, 0), finished_at=datetime(2026, 7, 10, 9, 5))
+    group = CompetitionGroup(group_id=777, okso_code="09.03.02", name="Информационные системы", seats=1)
+    db_session.add_all([first, second, group])
+    db_session.flush()
+    for snapshot, position in [(first, 5), (second, 3)]:
+        db_session.add(
+            ApplicantRow(
+                snapshot_id=snapshot.id,
+                group_id=group.id,
+                application_id="1007",
+                position=position,
+                score=270,
+                priority=1,
+                consent=False,
+            )
+        )
+        db_session.add(
+            ApplicantDailyMetric(
+                snapshot_id=snapshot.id,
+                group_id=group.id,
+                application_id="1007",
+                position=position,
+                consent_position=position,
+                real_competitor_position=position,
+                above_with_consent=position - 1,
+                above_without_consent=0,
+                general_gap_to_budget=position - 1,
+                consent_gap_to_budget=position - 1,
+                real_gap_to_budget=position - 1,
+            )
+        )
+    db_session.commit()
+    client = build_client(db_session)
+
+    response = client.post("/api/search", json={"application_id": "1007"})
+
+    assert response.status_code == 200
+    history = response.json()["history"]
+    assert len(history) == 1
+    assert [point["position"] for point in history[0]["points"]] == [5, 3]
