@@ -1,91 +1,91 @@
-# mai.tarko.su Admissions Analytics Design
+# Дизайн сервиса аналитики поступления в МАИ
 
-## Summary
+## Кратко
 
-`mai.tarko.su` is a public admissions analytics service for MAI. A visitor enters an application number, and the site shows all full-time budget MAI competition groups from Gosuslugi where that number appears, with facts, history, and scenario-based guidance.
+`mai.tarko.su` — публичный сервис аналитики поступления в МАИ. Посетитель вводит номер заявления, а сайт показывает все очные бюджетные конкурсные группы МАИ из Госуслуг, где этот номер найден: факты, историю и аккуратные сценарные ориентиры.
 
-The only data source for MVP is the public Gosuslugi API for `orgId=19` MAI. The service must not use `priem.mai.ru` or manual parsers in MVP.
+Источник данных для MVP только один: публичный API Госуслуг для МАИ, `orgId=19`. В MVP не используем `priem.mai.ru` и ручные парсеры.
 
-The production target is the existing Tarko VPS with nginx, systemd, and PostgreSQL. The GitHub repository is public, so code and docs must not include environment secrets, database dumps, raw snapshots, private logs, or production credentials.
+Продакшн-цель — текущий VPS Tarko с nginx, systemd и PostgreSQL. Репозиторий GitHub публичный, поэтому в коде и документации не должно быть секретов окружения, дампов БД, raw-снимков, приватных логов и production-доступов.
 
-## Architecture
+## Архитектура
 
-Use the reliable MVP architecture discussed as option B.
+Используем согласованный надёжный MVP-вариант B.
 
-- nginx serves a static frontend for `mai.tarko.su`.
-- nginx proxies `/api/` to a separate FastAPI service on localhost, expected port `8013`.
-- PostgreSQL has a separate `mai` database and role.
-- A separate systemd worker/timer performs daily data collection and metric computation.
-- The public API only reads already stored data. It never calls Gosuslugi and never runs heavy cascade or scenario calculations during a visitor request.
-- Manual refresh creates a background job and returns quickly with job status information.
+- nginx отдаёт статический frontend для `mai.tarko.su`.
+- nginx проксирует `/api/` в отдельный FastAPI-сервис на localhost, ожидаемый порт `8013`.
+- В PostgreSQL создаётся отдельная база и роль `mai`.
+- Отдельный systemd worker/timer выполняет ежедневный сбор данных и расчёт показателей.
+- Публичный API только читает уже сохранённые данные. Он не ходит в Госуслуги и не запускает тяжёлые расчёты каскада или сценариев во время запроса посетителя.
+- Ручное обновление создаёт фоновую задачу и быстро возвращает её статус.
 
-This keeps the user path fast even if Gosuslugi is slow or unavailable.
+Так пользовательский путь остаётся быстрым, даже если Госуслуги тормозят или недоступны.
 
-## Data Collection
+## Сбор Данных
 
-The worker stores one complete daily MAI dataset.
+Worker хранит один полный дневной набор данных МАИ.
 
-Pipeline:
+Порядок работы:
 
-1. Fetch MAI competition groups from Gosuslugi `orgId=19`.
-2. Select full-time budget competition groups.
-3. Fetch applicants for each selected group.
-4. Store compressed raw JSON outside git.
-5. Normalize rows into PostgreSQL.
-6. Compute group statistics.
-7. Compute the current cascade/deferred-acceptance baseline.
-8. Compute fixed scenario metrics.
-9. Store applicant daily metrics for fast lookup.
-10. Mark the data update as successful or failed.
+1. Получить конкурсные группы МАИ из Госуслуг `orgId=19`.
+2. Выбрать очные бюджетные конкурсные группы.
+3. Получить applicants по каждой выбранной группе.
+4. Сохранить сжатый raw JSON вне git.
+5. Нормализовать строки в PostgreSQL.
+6. Посчитать статистику по группам.
+7. Посчитать текущий каскад/deferred acceptance.
+8. Посчитать фиксированные сценарные показатели.
+9. Сохранить дневные показатели по заявлениям для быстрого поиска.
+10. Отметить обновление данных как успешное или ошибочное.
 
-The public search reads the latest usable data from PostgreSQL and should complete in tens or hundreds of milliseconds under normal conditions.
+Публичный поиск читает актуальные пригодные данные из PostgreSQL и в нормальном режиме должен отвечать за десятки или сотни миллисекунд.
 
-## Storage
+## Хранение
 
-Core tables:
+Основные таблицы:
 
-- `mai_snapshots`: one daily data update, timestamps, status, duration, group count, row count, unique application count, error text.
-- `mai_competition_groups`: Gosuslugi group id, OKSO, name, level, form, place type, budget seats.
-- `mai_applicant_rows`: snapshot, group, application number, position, score, priority, consent, category.
-- `mai_group_stats`: per-group daily aggregates.
-- `mai_applicant_daily_metrics`: precomputed facts and scenario metrics for fast dashboard responses.
-- `mai_search_logs`: permanent search log with timestamp, IP, user agent, application number, snapshot id, found flag, direction count, rate-limit flag, response time, and error code.
+- `mai_snapshots`: одно дневное обновление данных, время, статус, длительность, число групп, строк, уникальных заявлений, текст ошибки.
+- `mai_competition_groups`: id группы Госуслуг, ОКСО, название, уровень, форма, тип мест, число бюджетных мест.
+- `mai_applicant_rows`: обновление данных, группа, номер заявления, позиция, балл, приоритет, согласие, категория.
+- `mai_group_stats`: дневные агрегаты по группе.
+- `mai_applicant_daily_metrics`: заранее посчитанные факты и сценарные показатели для быстрого ответа дашборда.
+- `mai_search_logs`: бессрочный журнал поисков: время, IP, user-agent, номер заявления, id набора данных, найдено/не найдено, число направлений, был ли rate-limit, время ответа, код ошибки.
 
-Search logs are retained indefinitely. They are for administration, diagnostics, abuse control, and understanding usage. They must not be committed or exposed publicly.
+Журналы поисков хранятся бессрочно. Они нужны для администрирования, диагностики, защиты от перебора и понимания использования сервиса. Их нельзя коммитить или публично отдавать.
 
-## Public API
+## Публичный API
 
-Use `POST /api/search` with a JSON body instead of query parameters, so application numbers do not appear in URLs, browser history, referrers, or nginx access-log request lines.
+Поиск делаем через `POST /api/search` с JSON-body, а не через query-параметры. Так номер заявления не попадает в URL, историю браузера, referrer и request line nginx access log.
 
-Expected public endpoints:
+Ожидаемые публичные endpoint’ы:
 
-- `GET /api/health`: process health for monitoring.
-- `GET /api/ready`: backend, database, and data freshness check for monitoring.
-- `GET /api/status`: public data freshness/status summary.
-- `POST /api/search`: search by application number.
+- `GET /api/health`: процесс жив, для мониторинга.
+- `GET /api/ready`: backend, БД и свежесть данных, для мониторинга.
+- `GET /api/status`: публичная сводка о дате обновления данных.
+- `POST /api/search`: поиск по номеру заявления.
 
-Admin endpoints can exist for refresh/status, but they must be protected. MVP admin log inspection can be done over SSH/SQL instead of building a public admin UI.
+Админские endpoint’ы для обновления и статуса могут быть, но должны быть защищены. В MVP просмотр админских логов можно делать через SSH/SQL, без публичной админки.
 
-## Rate Limiting
+## Ограничение Запросов
 
-Do not use captcha in MVP.
+В MVP не используем captcha.
 
-Use a local rate limit:
+Используем локальное ограничение:
 
-- nginx `limit_req` on `/api/search`.
-- backend limit using `mai_search_logs`.
-- limit both total searches and distinct application numbers per IP in a time window.
-- when exceeded, return HTTP `429` with `retry_after_seconds`.
+- nginx `limit_req` на `/api/search`;
+- backend-лимит через `mai_search_logs`;
+- ограничиваем и общее число поисков, и число разных номеров заявлений с одного IP за окно времени;
+- при превышении возвращаем HTTP `429` с `retry_after_seconds`.
 
-User-facing message:
+Текст для пользователя:
 
 `Слишком много запросов подряд. Поиск временно ограничен, попробуйте позже.`
 
-## User Interface
+## Интерфейс
 
-The interface must avoid internal technical terms. Do not show words like snapshot, job, ready, pipeline, baseline, metrics, or successful snapshot. Also avoid the word `пока` in public UI copy.
+В интерфейсе нельзя показывать внутренние технические термины. Не используем слова вроде snapshot, job, ready, pipeline, baseline, metrics, successful snapshot. Также в публичном UI не используем слово `пока`.
 
-Allowed user-facing status examples:
+Допустимые пользовательские формулировки статусов:
 
 - `Данные обновлены: 9 июля, 09:12`
 - `Идёт обновление. Показываем данные от 9 июля, 09:12.`
@@ -94,86 +94,86 @@ Allowed user-facing status examples:
 - `Слишком много запросов подряд. Поиск временно ограничен, попробуйте позже.`
 - `Прогноз основан на текущих списках и сценариях поведения абитуриентов. Это не официальный результат зачисления.`
 
-Main MVP screen:
+Главный экран MVP:
 
-- application number input;
-- search button;
-- result cards for every MAI direction where the number appears;
-- facts from the latest data update;
-- history by day;
-- scenario explanation without magic percentages;
-- simple empty/error/rate-limit states.
+- поле номера заявления;
+- кнопка поиска;
+- карточки результатов по всем направлениям МАИ, где найден номер;
+- факты по последнему обновлению данных;
+- история по дням;
+- объяснение сценариев без магических процентов;
+- простые состояния: ничего не найдено, ошибка, временное ограничение поиска.
 
-## Forecasting
+## Прогноз
 
-Do not present Monte Carlo as a precise admission probability in MVP.
+В MVP не показываем Monte Carlo как точную вероятность поступления.
 
-Show:
+Показываем:
 
-- current facts;
-- position in the full list;
-- position among applicants with consent;
-- position among realistic competitors based on current priorities and cascade;
-- budget seats;
-- score;
-- competitors above with and without consent;
-- daily trends;
-- scenario labels and explanations.
+- текущие факты;
+- место в общем списке;
+- место среди абитуриентов с согласием;
+- место среди реальных конкурентов с учётом текущих приоритетов и каскада;
+- число бюджетных мест;
+- балл;
+- сколько конкурентов выше с согласием и без согласия;
+- динамику по дням;
+- сценарии с понятными названиями и объяснениями.
 
-Fixed scenarios are precomputed after each data update. The visitor page does not recalculate scenarios interactively.
+Фиксированные сценарии считаются заранее после каждого обновления данных. Страница посетителя не пересчитывает сценарии интерактивно.
 
-## Monitoring And Operations
+## Мониторинг И Эксплуатация
 
-Operational checks are for the administrator, not for the public UI.
+Служебные проверки нужны администратору, не публичному интерфейсу.
 
-Required operational pieces:
+Нужные операционные части:
 
-- separate nginx logs for `mai.tarko.su`;
-- request timing and upstream timing in access logs;
-- `health` and `ready` endpoints;
-- add `mai-web`, `mai-api-health`, and `mai-api-ready` checks to the existing Tarko monitoring;
-- systemd service for FastAPI;
-- systemd service/timer for the daily worker;
-- manual refresh command or protected endpoint.
+- отдельные nginx-логи для `mai.tarko.su`;
+- request timing и upstream timing в access log;
+- endpoint’ы `health` и `ready`;
+- добавить проверки `mai-web`, `mai-api-health`, `mai-api-ready` в текущий мониторинг Tarko;
+- systemd service для FastAPI;
+- systemd service/timer для ежедневного worker;
+- ручная команда обновления или защищённый endpoint.
 
-Public visitors only see simple data freshness and availability messages.
+Посетители видят только простые сообщения о дате данных и доступности поиска.
 
-## Analytics
+## Аналитика
 
-Add Yandex Metrika with a separate counter for `mai.tarko.su`.
+Подключаем Яндекс.Метрику отдельным счётчиком для `mai.tarko.su`.
 
-Rules:
+Правила:
 
-- do not reuse the `alexander.tarko.su` counter;
-- do not send application numbers to Metrika;
-- do not put application numbers in page URLs;
-- do not enable Webvisor for MVP;
-- safe goals: search submitted, found, not found, rate limited.
+- не переиспользовать счётчик `alexander.tarko.su`;
+- не отправлять номера заявлений в Метрику;
+- не класть номера заявлений в URL страниц;
+- не включать Webvisor в MVP;
+- безопасные цели: поиск отправлен, найдено, не найдено, временное ограничение поиска.
 
-If Yandex Webmaster is needed, add `robots.txt`, `sitemap.xml`, and the verification HTML file through the deployment/build process, not by hand-editing generated output.
+Если нужен Яндекс.Вебмастер, добавляем `robots.txt`, `sitemap.xml` и verification HTML-файл через build/deploy-процесс, а не ручным редактированием сгенерированного результата.
 
-## Security And Public Repository Hygiene
+## Безопасность И Публичный Репозиторий
 
-The repository is public.
+Репозиторий публичный.
 
-Never commit:
+Никогда не коммитим:
 
-- `.env` files;
-- database URLs or passwords;
-- PostgreSQL dumps;
-- raw Gosuslugi JSON snapshots;
-- production logs;
-- SSH keys;
-- OAuth/API tokens;
+- `.env` файлы;
+- database URL и пароли;
+- дампы PostgreSQL;
+- raw JSON Госуслуг;
+- production-логи;
+- SSH-ключи;
+- OAuth/API-токены;
 - production systemd environment files.
 
-Application numbers from public lists are not treated as personal secrets, but search logs that combine application number, IP, user agent, and timestamp are operational records and stay only in PostgreSQL/server logs.
+Номера заявлений из публичных списков не считаем персональными секретами, но журналы поисков, где связаны номер заявления, IP, user-agent и время, являются операционными данными и остаются только в PostgreSQL/серверных логах.
 
-Tests must use synthetic application numbers.
+В тестах используем синтетические номера заявлений.
 
-## Open Decisions
+## Открытые Решения
 
-- Exact daily schedule time.
-- Exact nginx/backend rate-limit thresholds.
-- Whether admin refresh is CLI-only for MVP or also a protected HTTP endpoint.
-- Exact Yandex Metrika counter id for `mai.tarko.su`.
+- Точное время ежедневного обновления.
+- Точные nginx/backend-лимиты поиска.
+- В MVP ручное обновление только через CLI или ещё и через защищённый HTTP endpoint.
+- Точный id счётчика Яндекс.Метрики для `mai.tarko.su`.
