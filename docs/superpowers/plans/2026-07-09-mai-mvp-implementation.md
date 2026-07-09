@@ -81,7 +81,7 @@
 - [ ] Render main answer, directions, deadline-aware forecast block, history, and error/rate-limit states.
 - [ ] Avoid internal terms and the word `пока` in UI copy.
 - [ ] Use `POST /api/search`; never put application number in URL.
-- [ ] Add optional Yandex Metrika hook without a hardcoded counter id.
+- [x] Add optional Yandex Metrika hook without a hardcoded counter id.
 
 ### Task 6: Deployment Templates
 
