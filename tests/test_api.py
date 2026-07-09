@@ -156,3 +156,65 @@ def test_search_includes_history_points(db_session):
     history = response.json()["history"]
     assert len(history) == 1
     assert [point["position"] for point in history[0]["points"]] == [5, 3]
+
+
+def test_search_includes_chances_and_global_cascade_slice(db_session):
+    from backend.models import ApplicantDailyMetric, ApplicantRow, CompetitionGroup, Snapshot
+
+    snapshot = Snapshot(status="ok", started_at=datetime(2026, 7, 10, 9, 0), finished_at=datetime(2026, 7, 10, 9, 5))
+    group = CompetitionGroup(group_id=888, okso_code="09.03.03", name="Прикладная информатика", seats=2)
+    db_session.add_all([snapshot, group])
+    db_session.flush()
+    for application_id, position, score, consent in [
+        ("2001", 1, 300, True),
+        ("2002", 2, 295, True),
+        ("2003", 3, 290, False),
+        ("1001", 4, 280, False),
+    ]:
+        db_session.add(
+            ApplicantRow(
+                snapshot_id=snapshot.id,
+                group_id=group.id,
+                application_id=application_id,
+                position=position,
+                score=score,
+                priority=1,
+                consent=consent,
+            )
+        )
+    db_session.add(
+        ApplicantDailyMetric(
+            snapshot_id=snapshot.id,
+            group_id=group.id,
+            application_id="1001",
+            position=4,
+            consent_position=3,
+            real_competitor_position=2,
+            above_with_consent=2,
+            above_without_consent=1,
+            general_gap_to_budget=2,
+            consent_gap_to_budget=1,
+            real_gap_to_budget=0,
+        )
+    )
+    db_session.commit()
+    client = build_client(db_session)
+
+    response = client.post("/api/search", json={"application_id": "1001"})
+
+    assert response.status_code == 200
+    direction = response.json()["directions"][0]
+    assert set(direction["chance"]) == {
+        "current_percent",
+        "cascade_percent",
+        "tempo_percent",
+        "stress_percent",
+        "label",
+    }
+    assert direction["cascade"] == {
+        "total_above": 3,
+        "real_competitors_above": 1,
+        "leaving_by_cascade": 1,
+        "waiting_without_consent": 1,
+    }
+    assert direction["chance"]["cascade_percent"] >= direction["chance"]["stress_percent"]

@@ -5,6 +5,7 @@ const message = document.getElementById("message");
 const dataStatus = document.getElementById("data-status");
 
 const deadline = new Date("2026-07-25T17:00:00+03:00");
+let chartInstances = [];
 
 function fmtDate(value) {
   if (!value) return "дата не загружена";
@@ -16,14 +17,16 @@ function fmtDate(value) {
   }).format(new Date(value));
 }
 
+function deadlineValue(data) {
+  return data?.deadline ? new Date(data.deadline) : deadline;
+}
+
 function deadlinePassed(data) {
-  const value = data?.deadline ? new Date(data.deadline) : deadline;
-  return Date.now() >= value.getTime();
+  return Date.now() >= deadlineValue(data).getTime();
 }
 
 function daysLeftText(data) {
-  const value = data?.deadline ? new Date(data.deadline) : deadline;
-  const ms = value.getTime() - Date.now();
+  const ms = deadlineValue(data).getTime() - Date.now();
   if (ms <= 0) return "Приём документов завершён";
   const days = Math.floor(ms / 86400000);
   const hours = Math.ceil((ms % 86400000) / 3600000);
@@ -80,19 +83,79 @@ async function loadStatus() {
   }
 }
 
-function fact(label, value) {
-  const shown = value === null || value === undefined ? "—" : value;
-  return `<div class="fact"><strong>${shown}</strong><span>${label}</span></div>`;
+function asNumber(value, fallback = 0) {
+  return Number.isFinite(Number(value)) ? Number(value) : fallback;
 }
 
-function gapText(gap) {
-  if (gap === 0) return "Внутри бюджетной зоны по текущему расчёту.";
-  if (gap === null || gap === undefined) return "Недостаточно данных для вывода.";
-  if (gap <= 5) return `Рядом с бюджетной зоной: разрыв ${gap}.`;
-  return `Вне бюджетной зоны: разрыв ${gap}.`;
+function shortName(name) {
+  if (!name) return "Направление";
+  return name.length > 32 ? `${name.slice(0, 31)}...` : name;
 }
 
-function renderDirections(directions, isAfterDeadline) {
+function missingText(gap) {
+  if (gap === null || gap === undefined) return "нет оценки";
+  return gap <= 0 ? "в зоне" : `не хватает ${gap}`;
+}
+
+function directionStatus(item) {
+  const gap = item.facts.real_gap_to_budget;
+  if (gap === null || gap === undefined) return "нужны новые данные для оценки";
+  if (gap <= 0) return "в бюджетной зоне по каскаду";
+  return `за зоной по каскаду, ${missingText(gap)} мест`;
+}
+
+function bestDirection(directions) {
+  return [...directions].sort((a, b) => {
+    const chance = (b.chance?.cascade_percent || 0) - (a.chance?.cascade_percent || 0);
+    if (chance) return chance;
+    return (a.facts.real_gap_to_budget ?? 9999) - (b.facts.real_gap_to_budget ?? 9999);
+  })[0];
+}
+
+function applicantSummary(directions) {
+  const first = directions[0]?.facts || {};
+  const score = first.score ?? "нет данных";
+  const consentCount = directions.filter((item) => item.facts.consent).length;
+  return `Балл: ${score}. Согласие: ${consentCount ? `есть на ${consentCount} направл.` : "нет"}.`;
+}
+
+function chanceItem(value, label) {
+  return `
+    <div class="chance-item">
+      <strong>${value}%</strong>
+      <span>${label}</span>
+    </div>
+  `;
+}
+
+function renderChance(data, best) {
+  const chance = best.chance || {};
+  return `
+    <section class="card">
+      <h3>Оценка шансов</h3>
+      <div class="chance-grid">
+        ${chanceItem(chance.current_percent ?? 1, "по согласиям")}
+        ${chanceItem(chance.cascade_percent ?? 1, "по каскаду")}
+        ${chanceItem(chance.tempo_percent ?? 1, "по темпу изменений")}
+        ${chanceItem(chance.stress_percent ?? 1, "напряжённый сценарий")}
+      </div>
+      <p class="note">Главный ориентир - каскад: общий расчёт по всем заявлениям, согласиям и приоритетам. Проценты помогают сравнивать сценарии, а не заменяют конкурсный список.</p>
+    </section>
+  `;
+}
+
+function renderTerms() {
+  return `
+    <section class="card legend-note">
+      <h3>Как читать числа</h3>
+      <div><b>по согласиям</b> - место среди тех, кто уже подал согласие на это направление.</div>
+      <div><b>по каскаду</b> - место после общего расчёта приоритетов: часть людей выше уходит на более желанные направления.</div>
+      <div><b>Не хватает мест</b> - сколько позиций отделяет от бюджетной зоны по каскаду. “В зоне” значит, что запас есть в текущем расчёте.</div>
+    </section>
+  `;
+}
+
+function renderDirections(directions) {
   return `
     <h2 class="section-title">Направления</h2>
     <div class="directions">
@@ -103,21 +166,20 @@ function renderDirections(directions, isAfterDeadline) {
             <div class="direction-head">
               <div>
                 <h3>${item.name}</h3>
-                <span>${item.okso_code || "ОКСО не указан"} · ${item.seats ?? "—"} бюджетных мест</span>
+                <div class="sub">${item.okso_code || "ОКСО не указан"} · ${item.seats ?? "-"} бюджетных мест · приоритет ${f.priority ?? "-"}</div>
               </div>
-              <span class="pill">Приоритет ${f.priority ?? "—"}</span>
+              <span class="pill">${item.chance?.cascade_percent ?? 1}% по каскаду</span>
             </div>
-            <div class="facts">
-              ${fact("Балл", f.score)}
-              ${fact("Место в общем списке", f.position)}
-              ${fact("Место среди согласий", f.consent_position)}
-              ${fact("Место среди реальных конкурентов", f.real_competitor_position)}
-              ${fact("Выше с согласием", f.above_with_consent)}
-              ${fact("Выше без согласия", f.above_without_consent)}
-              ${fact("Разрыв до зоны", f.real_gap_to_budget)}
-              ${fact("Согласие", f.consent ? "есть" : "нет")}
+            <div class="compact-metrics">
+              <div class="metric"><strong>${f.position ?? "-"}</strong><span>общий список</span></div>
+              <div class="metric"><strong>${f.consent_position ?? "-"}</strong><span>по согласиям</span></div>
+              <div class="metric"><strong>${f.real_competitor_position ?? "-"}</strong><span>по каскаду</span></div>
+              <div class="metric"><strong>${missingText(f.real_gap_to_budget)}</strong><span>Не хватает мест</span></div>
             </div>
-            ${isAfterDeadline ? "" : `<div class="outlook">${gapText(f.real_gap_to_budget)}</div>`}
+            <div class="direction-foot">
+              <span>${directionStatus(item)}. Выше: ${item.cascade?.real_competitors_above ?? 0} мешают, ${item.cascade?.leaving_by_cascade ?? 0} уходят по каскаду, ${item.cascade?.waiting_without_consent ?? 0} без согласия.</span>
+              <span class="pill">проходной по каскаду: ${item.cutoff?.cascade ?? "-"}</span>
+            </div>
           </article>
         `;
       }).join("")}
@@ -125,76 +187,158 @@ function renderDirections(directions, isAfterDeadline) {
   `;
 }
 
-function renderForecast(data) {
-  if (deadlinePassed(data)) return "";
-  const directions = data.directions || [];
-  const aboveWithout = directions.reduce((sum, item) => sum + (item.facts.above_without_consent || 0), 0);
-  const close = directions.some((item) => (item.facts.real_gap_to_budget ?? 99) <= 5);
-  return `
-    <h2 class="section-title">Что может измениться до 25 июля</h2>
-    <div class="forecast">
-      <section class="forecast-item">
-        <h3>По темпу последних дней</h3>
-        <p>Смотрим, как менялось число согласий выше в списке. История станет точнее после нескольких обновлений данных.</p>
-      </section>
-      <section class="forecast-item">
-        <h3>Если темп согласий сохранится</h3>
-        <p>${close ? "Часть направлений рядом с границей, поэтому важны новые согласия выше." : "Главный риск сейчас — заявления выше без согласия."}</p>
-      </section>
-      <section class="forecast-item">
-        <h3>Напряжённый сценарий</h3>
-        <p>Выше без согласия: ${aboveWithout}. Если многие подтвердят согласие, разрыв до бюджетной зоны может вырасти.</p>
-      </section>
-    </div>
-  `;
+function segmentWidth(value, total) {
+  if (!total) return 0;
+  return Math.max(4, Math.round((value / total) * 100));
 }
 
-function renderChart(points) {
-  if (!points || points.length < 2) {
-    return `<p class="note">История начнёт отображаться после нескольких обновлений данных.</p>`;
-  }
-  const width = 640;
-  const height = 190;
-  const pad = 24;
-  const values = points.map((p) => p.real_competitor_position || p.position).filter((v) => Number.isFinite(v));
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = Math.max(1, max - min);
-  const coords = points.map((p, i) => {
-    const value = p.real_competitor_position || p.position;
-    const x = pad + (i * (width - pad * 2)) / Math.max(1, points.length - 1);
-    const y = pad + ((value - min) * (height - pad * 2)) / span;
-    return `${x},${y}`;
-  }).join(" ");
+function renderCascade(directions) {
   return `
-    <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="История позиции">
-      <polyline fill="none" stroke="#2669d9" stroke-width="4" points="${coords}"></polyline>
-      ${points.map((p, i) => {
-        const value = p.real_competitor_position || p.position;
-        const x = pad + (i * (width - pad * 2)) / Math.max(1, points.length - 1);
-        const y = pad + ((value - min) * (height - pad * 2)) / span;
-        return `<circle cx="${x}" cy="${y}" r="5" fill="#16875d"><title>${fmtDate(p.date)}: место ${value}</title></circle>`;
+    <h2 class="section-title">Каскад поступающих</h2>
+    <section class="card cascade-list">
+      ${directions.map((item) => {
+        const c = item.cascade || {};
+        const total = Math.max(1, c.total_above || 0);
+        return `
+          <div class="cascade-row">
+            <div>
+              <strong>${shortName(item.name)}</strong>
+              <div class="sub">люди выше вашего заявления</div>
+            </div>
+            <div class="bar-track" aria-hidden="true">
+              <span class="bar-real" style="width:${segmentWidth(c.real_competitors_above || 0, total)}%"></span>
+              <span class="bar-leave" style="width:${segmentWidth(c.leaving_by_cascade || 0, total)}%"></span>
+              <span class="bar-wait" style="width:${segmentWidth(c.waiting_without_consent || 0, total)}%"></span>
+            </div>
+            <div class="cascade-counts">
+              <span>мешают: ${c.real_competitors_above ?? 0}</span>
+              <span>уходят: ${c.leaving_by_cascade ?? 0}</span>
+              <span>без согласия: ${c.waiting_without_consent ?? 0}</span>
+            </div>
+          </div>
+        `;
       }).join("")}
-    </svg>
+    </section>
   `;
 }
 
-function renderHistory(history) {
-  if (!history || !history.length) return "";
+function renderCharts() {
   return `
-    <h2 class="section-title">История</h2>
-    <div class="history-list">
-      ${history.map((item) => `
-        <section class="chart-card">
-          <h3>${item.name}</h3>
-          ${renderChart(item.points)}
-        </section>
-      `).join("")}
+    <h2 class="section-title">Динамика</h2>
+    <div class="charts-grid">
+      <section class="chart-card">
+        <h3>Состав конкуренции</h3>
+        <div class="chart-box"><canvas id="chart-composition"></canvas></div>
+      </section>
+      <section class="chart-card">
+        <h3>Позиции по направлениям</h3>
+        <div class="chart-box"><canvas id="chart-position"></canvas></div>
+      </section>
+      <section class="chart-card">
+        <h3>Прогноз проходного балла</h3>
+        <div class="chart-box"><canvas id="chart-cutoff"></canvas></div>
+      </section>
+      <section class="chart-card">
+        <h3>Не хватает мест</h3>
+        <div class="chart-box"><canvas id="chart-gap"></canvas></div>
+      </section>
     </div>
   `;
+}
+
+function chartColors() {
+  return ["#4d8cff", "#30d17e", "#ffb648", "#ff5c62", "#a778ff", "#23c7d9"];
+}
+
+function destroyCharts() {
+  chartInstances.forEach((chart) => chart.destroy());
+  chartInstances = [];
+}
+
+function chartDefaults() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: "#dce7ff", boxWidth: 12 } },
+      tooltip: { intersect: false, mode: "index" },
+    },
+    scales: {
+      x: { ticks: { color: "#9fb0cf" }, grid: { color: "rgba(111,149,221,0.18)" } },
+      y: { ticks: { color: "#9fb0cf" }, grid: { color: "rgba(111,149,221,0.18)" } },
+    },
+  };
+}
+
+function mountCharts(data) {
+  destroyCharts();
+  if (!window.Chart || !data?.directions?.length) return;
+
+  const colors = chartColors();
+  const directions = data.directions;
+  const labels = directions.map((item) => shortName(item.name));
+  const options = chartDefaults();
+
+  chartInstances.push(new Chart(document.getElementById("chart-composition"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "мешают", data: directions.map((item) => item.cascade?.real_competitors_above || 0), backgroundColor: "#ff5c62" },
+        { label: "уходят по каскаду", data: directions.map((item) => item.cascade?.leaving_by_cascade || 0), backgroundColor: "#ffb648" },
+        { label: "без согласия", data: directions.map((item) => item.cascade?.waiting_without_consent || 0), backgroundColor: "#4d8cff" },
+      ],
+    },
+    options: { ...options, scales: { ...options.scales, x: { ...options.scales.x, stacked: true }, y: { ...options.scales.y, stacked: true } } },
+  }));
+
+  chartInstances.push(new Chart(document.getElementById("chart-position"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "общий список", data: directions.map((item) => item.facts.position), borderColor: colors[0], backgroundColor: colors[0], tension: 0.25 },
+        { label: "по согласиям", data: directions.map((item) => item.facts.consent_position), borderColor: colors[1], backgroundColor: colors[1], tension: 0.25 },
+        { label: "по каскаду", data: directions.map((item) => item.facts.real_competitor_position), borderColor: colors[2], backgroundColor: colors[2], tension: 0.25 },
+      ],
+    },
+    options,
+  }));
+
+  chartInstances.push(new Chart(document.getElementById("chart-cutoff"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "общий список", data: directions.map((item) => item.cutoff?.general), backgroundColor: colors[0] },
+        { label: "согласия", data: directions.map((item) => item.cutoff?.consent), backgroundColor: colors[1] },
+        { label: "каскад", data: directions.map((item) => item.cutoff?.cascade), backgroundColor: colors[2] },
+      ],
+    },
+    options,
+  }));
+
+  chartInstances.push(new Chart(document.getElementById("chart-gap"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "не хватает мест", data: directions.map((item) => Math.max(0, item.facts.real_gap_to_budget || 0)), borderColor: colors[3], backgroundColor: colors[3], tension: 0.25 },
+        { label: "шанс по каскаду, %", data: directions.map((item) => item.chance?.cascade_percent || 1), borderColor: colors[4], backgroundColor: colors[4], tension: 0.25, yAxisID: "y1" },
+      ],
+    },
+    options: {
+      ...options,
+      scales: {
+        ...options.scales,
+        y1: { position: "right", ticks: { color: "#9fb0cf" }, grid: { drawOnChartArea: false } },
+      },
+    },
+  }));
 }
 
 function renderResult(data) {
+  destroyCharts();
   const isAfterDeadline = deadlinePassed(data);
   if (!data.found) {
     result.hidden = false;
@@ -202,20 +346,22 @@ function renderResult(data) {
       <section class="summary">
         <div>
           <h2>Номер не найден</h2>
-          <p>Номер заявления не найден в очных бюджетных конкурсах МАИ. Проверьте номер и учтите, что платные и заочные конкурсы в MVP не проверяются.</p>
+          <p>Заявление не найдено в очных бюджетных конкурсах МАИ на Госуслугах. Проверьте номер и источник данных.</p>
         </div>
       </section>
     `;
     trackGoal("search_not_found");
     return;
   }
+
   trackGoal("search_found");
+  const best = bestDirection(data.directions);
   result.hidden = false;
   result.innerHTML = `
     <section class="summary">
       <div>
         <h2>Заявление ${data.application_id}</h2>
-        <p>${isAfterDeadline ? "Приём документов завершён. " : ""}${data.summary.status}</p>
+        <p>${isAfterDeadline ? "Приём документов завершён. " : ""}${applicantSummary(data.directions)} Лучший текущий ориентир: ${best.name}, ${directionStatus(best)}.</p>
       </div>
       <div class="summary-meta">
         <span class="pill">${data.summary.directions_count} направл.</span>
@@ -223,11 +369,16 @@ function renderResult(data) {
         <span class="pill">${daysLeftText(data)}</span>
       </div>
     </section>
-    ${renderDirections(data.directions, isAfterDeadline)}
-    ${renderForecast(data)}
-    ${renderHistory(data.history)}
-    <p class="note">Сервис показывает аналитику по текущим данным Госуслуг. Это не официальный результат зачисления.</p>
+    <div class="overview-grid">
+      ${isAfterDeadline ? renderTerms() : renderChance(data, best)}
+      ${renderTerms()}
+    </div>
+    ${renderDirections(data.directions)}
+    ${isAfterDeadline ? "" : renderCascade(data.directions)}
+    ${renderCharts()}
+    <p class="note">Это аналитика по текущим данным Госуслуг, не официальный результат зачисления.</p>
   `;
+  mountCharts(data);
 }
 
 form.addEventListener("submit", async (event) => {
@@ -247,16 +398,16 @@ form.addEventListener("submit", async (event) => {
     const data = await response.json();
     if (response.status === 429) {
       trackGoal("rate_limited");
-      showMessage(data.message || "Слишком много запросов подряд. Поиск временно ограничен, попробуйте позже.", true);
+      showMessage(data.message || "Слишком много запросов подряд. Поиск временно ограничен, повторите позже.", true);
       return;
     }
     if (!response.ok) {
-      showMessage("Поиск недоступен. Попробуйте позже.", true);
+      showMessage("Поиск недоступен. Повторите позже.", true);
       return;
     }
     renderResult(data);
   } catch {
-    showMessage("Поиск недоступен. Попробуйте позже.", true);
+    showMessage("Поиск недоступен. Повторите позже.", true);
   } finally {
     button.disabled = false;
     button.textContent = "Найти";

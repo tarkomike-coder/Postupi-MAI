@@ -4,28 +4,34 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Поступление МАИ</title>
-  <meta name="description" content="Поиск заявления в очных бюджетных конкурсах МАИ по данным Госуслуг">
+  <meta name="description" content="Аналитика поступления в МАИ по номеру заявления на основе данных Госуслуг">
   <link rel="stylesheet" href="/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
+  <div class="uni-rail" aria-hidden="true">
+    <span>МАИ</span>
+    <span>Госуслуги</span>
+  </div>
+
   <header class="topbar">
     <div>
       <strong>Поступление МАИ</strong>
-      <span id="data-status">Загрузка даты данных...</span>
+      <span id="data-status">Загрузка данных...</span>
     </div>
   </header>
 
-  <main class="layout">
-    <section class="search-panel" aria-labelledby="search-title">
-      <div class="search-copy">
-        <p class="eyebrow">Госуслуги · МАИ · очное бюджетное</p>
-        <h1 id="search-title">Найдите заявление в конкурсных списках МАИ</h1>
-        <p>Введите номер заявления. Сервис покажет направления, текущие позиции, согласия выше и историю изменений.</p>
+  <main class="shell">
+    <section class="hero" aria-labelledby="search-title">
+      <div>
+        <p class="eyebrow">Госуслуги · МАИ · очный бюджет</p>
+        <h1 id="search-title">Аналитика поступления по номеру заявления</h1>
+        <p class="hero-copy">Направления, позиции, каскад приоритетов, шансы и динамика в одном экране.</p>
       </div>
       <form id="search-form" class="search-form">
         <label for="application-id">Номер заявления</label>
         <div class="search-row">
-          <input id="application-id" name="application_id" inputmode="numeric" autocomplete="off" placeholder="Например, 1000001" required>
+          <input id="application-id" name="application_id" inputmode="numeric" autocomplete="off" placeholder="Например, 1422086" required>
           <button type="submit">Найти</button>
         </div>
       </form>

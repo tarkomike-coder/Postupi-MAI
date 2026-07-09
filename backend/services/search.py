@@ -73,7 +73,7 @@ def _summary_for_directions(directions: list[dict], *, deadline_passed: bool = F
     if not directions:
         return "Номер заявления не найден в очных бюджетных конкурсах МАИ."
     if deadline_passed:
-        return "Приём документов завершён. Показываем фактическое положение по последним данным."
+        return "Приём документов завершён. Отображаем фактическое положение по последним данным."
     if any(item["facts"]["real_gap_to_budget"] == 0 for item in directions):
         return "Есть направления, где заявление сейчас внутри бюджетной зоны по текущим согласиям."
     if any((item["facts"]["real_gap_to_budget"] or 99) <= 5 for item in directions):
@@ -113,6 +113,123 @@ def _history(db: Session, application_id: str) -> list[dict]:
             }
         )
     return list(grouped.values())
+
+
+def _bounded_percent(value: int | float) -> int:
+    return max(1, min(99, int(round(value))))
+
+
+def _chance_from_gap(gap: int | None, *, seats: int | None, pending: int = 0) -> int:
+    if gap is None:
+        return 1
+    seats_value = max(1, int(seats or 1))
+    if gap <= 0:
+        base = 94
+    else:
+        base = 88 - min(72, gap * max(3, round(18 / seats_value)))
+    pressure = min(45, pending * max(2, round(10 / seats_value)))
+    return _bounded_percent(base - pressure)
+
+
+def _chance_label(percent: int) -> str:
+    if percent >= 85:
+        return "высокая"
+    if percent >= 60:
+        return "хорошая"
+    if percent >= 35:
+        return "пограничная"
+    return "низкая"
+
+
+def _cascade_slice(metric: ApplicantDailyMetric | None) -> dict:
+    if metric is None:
+        return {
+            "total_above": 0,
+            "real_competitors_above": 0,
+            "leaving_by_cascade": 0,
+            "waiting_without_consent": 0,
+        }
+    above_with_consent = int(metric.above_with_consent or 0)
+    above_without_consent = int(metric.above_without_consent or 0)
+    real_competitors_above = max(0, int(metric.real_competitor_position or 1) - 1)
+    return {
+        "total_above": above_with_consent + above_without_consent,
+        "real_competitors_above": real_competitors_above,
+        "leaving_by_cascade": max(0, above_with_consent - real_competitors_above),
+        "waiting_without_consent": above_without_consent,
+    }
+
+
+def _chance_block(metric: ApplicantDailyMetric | None, *, seats: int | None) -> dict:
+    if metric is None:
+        return {
+            "current_percent": 1,
+            "cascade_percent": 1,
+            "tempo_percent": 1,
+            "stress_percent": 1,
+            "label": "нет оценки",
+        }
+    cascade = _cascade_slice(metric)
+    current = _chance_from_gap(metric.consent_gap_to_budget, seats=seats)
+    cascade_percent = _chance_from_gap(metric.real_gap_to_budget, seats=seats)
+    stress = _chance_from_gap(
+        metric.real_gap_to_budget,
+        seats=seats,
+        pending=cascade["waiting_without_consent"],
+    )
+    tempo = _bounded_percent((cascade_percent * 2 + stress + current) / 4)
+    return {
+        "current_percent": current,
+        "cascade_percent": cascade_percent,
+        "tempo_percent": tempo,
+        "stress_percent": min(stress, cascade_percent),
+        "label": _chance_label(tempo),
+    }
+
+
+def _score_at(rows: list[ApplicantRow], seats: int | None) -> int | None:
+    if not rows or not seats:
+        return None
+    ordered = sorted(rows, key=lambda row: (-(row.score or 0), row.position or 10**9))
+    if len(ordered) < seats:
+        return None
+    return ordered[seats - 1].score
+
+
+def _cutoff_block(db: Session, *, snapshot_id: int, group_id: int, seats: int | None) -> dict:
+    if not seats:
+        return {"general": None, "consent": None, "cascade": None}
+    rows = (
+        db.query(ApplicantRow)
+        .filter(
+            ApplicantRow.snapshot_id == snapshot_id,
+            ApplicantRow.group_id == group_id,
+            ApplicantRow.score.isnot(None),
+        )
+        .all()
+    )
+    consent_rows = [row for row in rows if row.consent]
+    cascade_rows = (
+        db.query(ApplicantRow)
+        .join(
+            ApplicantDailyMetric,
+            (ApplicantDailyMetric.snapshot_id == ApplicantRow.snapshot_id)
+            & (ApplicantDailyMetric.group_id == ApplicantRow.group_id)
+            & (ApplicantDailyMetric.application_id == ApplicantRow.application_id),
+        )
+        .filter(
+            ApplicantRow.snapshot_id == snapshot_id,
+            ApplicantRow.group_id == group_id,
+            ApplicantDailyMetric.real_competitor_position <= seats,
+            ApplicantRow.score.isnot(None),
+        )
+        .all()
+    )
+    return {
+        "general": _score_at(rows, seats),
+        "consent": _score_at(consent_rows, seats),
+        "cascade": _score_at(cascade_rows, seats),
+    }
 
 
 def build_search_response(db: Session, *, application_id: str, ip: str, user_agent: str | None) -> dict:
@@ -167,6 +284,9 @@ def build_search_response(db: Session, *, application_id: str, ip: str, user_age
                 "okso_code": group.okso_code,
                 "seats": group.seats,
                 "facts": facts,
+                "chance": _chance_block(metric, seats=group.seats),
+                "cascade": _cascade_slice(metric),
+                "cutoff": _cutoff_block(db, snapshot_id=snapshot.id, group_id=group.id, seats=group.seats),
             }
         )
     directions.sort(key=lambda item: (item["facts"]["priority"] or 999, item["facts"]["real_gap_to_budget"] or 9999))
