@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -31,6 +33,10 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def normalize_application_id(value: str) -> str:
+    return re.sub(r"\D+", "", value or "")
+
+
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -53,7 +59,7 @@ def search(payload: SearchRequest, request: Request, db: Session = Depends(get_d
     try:
         return build_search_response(
             db,
-            application_id=payload.application_id.strip(),
+            application_id=normalize_application_id(payload.application_id),
             ip=client_ip(request),
             user_agent=request.headers.get("user-agent"),
         )

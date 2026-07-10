@@ -52,8 +52,8 @@ def seed_result(db_session):
 
 
 def build_client(db_session):
-    from backend.main import create_app
     from backend.api import get_db
+    from backend.main import create_app
 
     app = create_app(mount_static=False)
 
@@ -102,6 +102,21 @@ def test_search_returns_directions_and_logs_request(db_session):
     assert body["directions"][0]["facts"]["score"] == 280
     assert db_session.query(SearchLog).count() == 1
     assert db_session.query(SearchLog).one().found is True
+
+
+def test_search_normalizes_formatted_application_id(db_session):
+    from backend.models import SearchLog
+
+    seed_result(db_session)
+    client = build_client(db_session)
+
+    response = client.post("/api/search", json={"application_id": "№ 1 001"}, headers={"X-Forwarded-For": "1.2.3.4"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["found"] is True
+    assert body["application_id"] == "1001"
+    assert db_session.query(SearchLog).one().application_id == "1001"
 
 
 def test_search_not_found_is_logged(db_session):

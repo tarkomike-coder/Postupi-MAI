@@ -693,6 +693,105 @@ button:disabled {
   line-height: 1.45;
 }
 
+.faq-block {
+  margin-top: 34px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(18, 36, 74, 0.48);
+  overflow: hidden;
+}
+
+.faq-block summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 0 18px;
+  color: #c9d8f5;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.faq-block summary::after {
+  content: "+";
+  color: var(--blue);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.faq-block[open] summary {
+  border-bottom: 1px solid rgba(111, 149, 221, 0.18);
+}
+
+.faq-block[open] summary::after {
+  content: "-";
+}
+
+.faq-content {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 18px;
+}
+
+.faq-content article {
+  display: grid;
+  gap: 4px;
+}
+
+.faq-block h2 {
+  margin: 0;
+  color: #dce7ff;
+  font-size: 15px;
+}
+
+.faq-block p {
+  max-width: 860px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.contact-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(111, 149, 221, 0.18);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.contact-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(18, 36, 74, 0.72);
+  color: #fff;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.contact-link:hover {
+  transform: translateY(-1px);
+  border-color: #6d95dd;
+  background: rgba(23, 43, 87, 0.94);
+}
+
+.contact-link svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.contact-link.telegram { color: #2aabee; }
+.contact-link.max { color: #1686f5; }
+
 @media (max-width: 980px) {
   .hero,
   .summary,

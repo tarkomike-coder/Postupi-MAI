@@ -19,7 +19,8 @@ def test_frontend_exposes_compact_analytics_dashboard():
     text = _public_text()
 
     for expected in [
-        "Аналитика поступления по номеру заявления",
+        "Аналитика поступления по коду поступающего",
+        "Код поступающего / ID поступающего",
         "Главный вывод по текущим данным",
         "Куда проходит заявление",
         "Оценка устойчивости",
@@ -42,6 +43,18 @@ def test_frontend_exposes_compact_analytics_dashboard():
         "real-chance",
         "status-pass",
         "status-reserve-pass",
+        "https://t.me/MikRUS777",
+        "https://max.ru/u/f9LHodD0cOIc93Y0M9eCBRVmxWS4Nin-yIZHWERwhlV2euQ9RE608IHwUn8",
+        "contact-footer",
+        "Как это работает",
+        '<details class="faq-block">',
+        "Что такое код поступающего?",
+        "Чем код поступающего отличается от номера заявления?",
+        "Какие данные используются?",
+        "application/ld+json",
+        "FAQPage",
+        "WebApplication",
+        'rel="canonical"',
     ]:
         assert expected in text
 
@@ -70,6 +83,15 @@ def test_yandex_webmaster_verification_file():
 
     assert "Verification: 3373b3a388de174b" in text
     assert "charset=UTF-8" in text
+
+
+def test_search_engine_entry_files():
+    robots = (ROOT / "site" / "robots.txt").read_text(encoding="utf-8")
+    sitemap = (ROOT / "site" / "sitemap.xml").read_text(encoding="utf-8")
+
+    assert "Sitemap: https://mai.tarko.su/sitemap.xml" in robots
+    assert "<loc>https://mai.tarko.su/</loc>" in sitemap
+    assert "<urlset" in sitemap
 
 
 def test_frontend_copy_avoids_confusing_admissions_terms():

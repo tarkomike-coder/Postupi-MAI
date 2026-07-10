@@ -23,6 +23,7 @@ logs/
 .mypy_cache/
 .ruff_cache/
 htmlcov/
+artifacts/
 dist/
 build/
 

@@ -80,7 +80,7 @@ def _check_rate_limit(db: Session, *, ip: str, application_id: str) -> None:
 
 def _summary_for_directions(directions: list[dict], *, deadline_passed: bool = False) -> str:
     if not directions:
-        return "Номер заявления не найден в очных бюджетных конкурсах МАИ."
+        return "Код поступающего не найден в очных бюджетных конкурсах МАИ."
     if deadline_passed:
         return "Приём документов завершён. Отображаем фактическое положение по последним данным."
     if any(item["facts"]["real_gap_to_budget"] == 0 for item in directions):

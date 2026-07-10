@@ -430,8 +430,8 @@ function renderResult(data) {
     result.innerHTML = `
       <section class="summary">
         <div>
-          <h2>Номер не найден</h2>
-          <p>Заявление не найдено в очных бюджетных конкурсах МАИ на Госуслугах. Проверьте номер и источник данных.</p>
+          <h2>Код ${data.application_id || ""} не найден</h2>
+          <p>Ищем код поступающего, он же ID поступающего в конкурсных списках Госуслуг. Номер заявления, СНИЛС или другой длинный идентификатор может быть другим числом и по нему публичные списки не ищутся.</p>
         </div>
       </section>
     `;
@@ -448,7 +448,7 @@ function renderResult(data) {
   result.innerHTML = `
     <section class="summary">
       <div>
-        <h2>Заявление ${data.application_id}</h2>
+        <h2>Код поступающего ${data.application_id}</h2>
         <p>${isAfterDeadline ? "Приём документов завершён. " : ""}${applicantSummary(data.directions)} Лучший текущий ориентир: ${best.name}, ${directionStatus(best)}.</p>
       </div>
       <div class="summary-meta">
@@ -475,6 +475,12 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   clearMessage();
   result.hidden = true;
+  const normalizedApplicationId = input.value.replace(/\D+/g, "");
+  if (!normalizedApplicationId) {
+    showMessage("Введите код поступающего цифрами.", true);
+    return;
+  }
+  input.value = normalizedApplicationId;
   const button = form.querySelector("button");
   button.disabled = true;
   button.textContent = "Ищем";
@@ -483,7 +489,7 @@ form.addEventListener("submit", async (event) => {
     const response = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ application_id: input.value.trim() }),
+      body: JSON.stringify({ application_id: normalizedApplicationId }),
     });
     const data = await response.json();
     if (response.status === 429) {
