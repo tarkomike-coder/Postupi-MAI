@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from math import log10
@@ -9,7 +10,8 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import ApplicantDailyMetric, ApplicantRow, CompetitionGroup, SearchLog, Snapshot, utcnow
+from ..models import ApplicantDailyMetric, ApplicantRow, CompetitionGroup, GroupStat, SearchLog, Snapshot, utcnow
+from .metrics import run_deferred_acceptance
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,304 @@ def latest_status(db: Session) -> dict:
         "groups_count": snapshot.groups_count,
         "rows_count": snapshot.rows_count,
         "unique_applications_count": snapshot.unique_applications_count,
+    }
+
+
+def _round_per_place(rows_count: int, seats: int | None) -> float | None:
+    if not seats:
+        return None
+    return round(rows_count / seats, 1)
+
+
+def _direction_dashboard_item(
+    *,
+    group: CompetitionGroup,
+    rows: list[tuple[ApplicantRow, ApplicantDailyMetric | None]],
+    stat: GroupStat | None,
+    assignment: dict[str, int | None],
+) -> dict:
+    seats = group.seats or 0
+    applicant_rows = [row for row, _metric in rows]
+    rows_count = stat.rows_count if stat else len(applicant_rows)
+    consent_count = stat.consent_count if stat else sum(1 for row in applicant_rows if row.consent)
+    consent_rows = [row for row in applicant_rows if row.consent]
+    cascade_rows = [
+        row
+        for row, metric in rows
+        if seats and row.consent and assignment.get(row.application_id) == row.group_id
+    ]
+    return {
+        "group_id": group.group_id,
+        "name": group.name,
+        "okso_code": group.okso_code,
+        "seats": group.seats,
+        "applicants_count": rows_count,
+        "consent_count": consent_count,
+        "applicants_per_place": _round_per_place(rows_count, group.seats),
+        "cascade_in_budget_count": min(len(cascade_rows), seats) if seats else 0,
+        "no_consent_in_cascade": sum(1 for row in cascade_rows if not row.consent),
+        "cutoff": {
+            "general": _score_at(applicant_rows, group.seats),
+            "consent": _score_at(consent_rows, group.seats),
+            "cascade": _score_at(cascade_rows, group.seats),
+        },
+    }
+
+
+def _snapshot_assignment(db: Session, snapshot_id: int) -> dict[str, int | None]:
+    rows = (
+        db.query(ApplicantRow)
+        .filter(
+            ApplicantRow.snapshot_id == snapshot_id,
+            ApplicantRow.score.isnot(None),
+            ApplicantRow.priority.isnot(None),
+            ApplicantRow.consent.is_(True),
+        )
+        .all()
+    )
+    group_ids = sorted({row.group_id for row in rows})
+    if not group_ids:
+        return {}
+    capacities = {
+        group.id: group.seats or 0
+        for group in db.query(CompetitionGroup).filter(CompetitionGroup.id.in_(group_ids)).all()
+    }
+    applicants: dict[str, list[tuple[int, int, int]]] = defaultdict(list)
+    for row in rows:
+        applicants[row.application_id].append((row.group_id, int(row.priority or 999), int(row.score or 0)))
+    return run_deferred_acceptance(
+        {application_id: sorted(prefs, key=lambda item: item[1]) for application_id, prefs in applicants.items()},
+        capacities,
+    )
+
+
+def _sort_value(value, fallback=0):
+    return fallback if value is None else value
+
+
+def build_overview_response(db: Session) -> dict:
+    snapshot = _latest_ok_snapshot(db)
+    if snapshot is None:
+        return {
+            "has_data": False,
+            "updated_at": None,
+            "source": "public_gosuslugi",
+            "source_text": "Данные рассчитываются только по публичным конкурсным спискам Госуслуг.",
+            "totals": {
+                "directions_count": 0,
+                "budget_places": 0,
+                "applicants_count": 0,
+                "consents_count": 0,
+            },
+            "cascade": [],
+            "cutoffs": [],
+            "competition": [],
+        }
+
+    current_group_ids = [
+        group_id
+        for (group_id,) in db.query(ApplicantRow.group_id).filter(ApplicantRow.snapshot_id == snapshot.id).distinct().all()
+    ]
+    group_rows = (
+        db.query(CompetitionGroup, GroupStat)
+        .outerjoin(
+            GroupStat,
+            (GroupStat.group_id == CompetitionGroup.id) & (GroupStat.snapshot_id == snapshot.id),
+        )
+        .filter(CompetitionGroup.id.in_(current_group_ids))
+        .order_by(CompetitionGroup.name.asc())
+        .all()
+    )
+    applicant_rows = (
+        db.query(ApplicantRow, ApplicantDailyMetric)
+        .outerjoin(
+            ApplicantDailyMetric,
+            (ApplicantDailyMetric.snapshot_id == ApplicantRow.snapshot_id)
+            & (ApplicantDailyMetric.group_id == ApplicantRow.group_id)
+            & (ApplicantDailyMetric.application_id == ApplicantRow.application_id),
+        )
+        .filter(ApplicantRow.snapshot_id == snapshot.id)
+        .all()
+    )
+    rows_by_group: dict[int, list[tuple[ApplicantRow, ApplicantDailyMetric | None]]] = {}
+    for row, metric in applicant_rows:
+        rows_by_group.setdefault(row.group_id, []).append((row, metric))
+
+    assignment = _snapshot_assignment(db, snapshot.id)
+    directions = [
+        _direction_dashboard_item(group=group, rows=rows_by_group.get(group.id, []), stat=stat, assignment=assignment)
+        for group, stat in group_rows
+    ]
+    budget_places = sum(int(item["seats"] or 0) for item in directions)
+    consents_count = sum(int(item["consent_count"] or 0) for item in directions)
+
+    cascade = sorted(
+        directions,
+        key=lambda item: (
+            _sort_value(item["applicants_count"]),
+            _sort_value(item["seats"]),
+            item["name"],
+        ),
+        reverse=True,
+    )[:8]
+    cutoffs = sorted(
+        directions,
+        key=lambda item: (
+            _sort_value(item["cutoff"]["cascade"], -1),
+            _sort_value(item["cutoff"]["consent"], -1),
+            _sort_value(item["applicants_count"]),
+        ),
+        reverse=True,
+    )[:8]
+    competition = sorted(
+        [item for item in directions if item["applicants_per_place"] is not None],
+        key=lambda item: (
+            _sort_value(item["applicants_per_place"]),
+            _sort_value(item["applicants_count"]),
+        ),
+        reverse=True,
+    )[:10]
+
+    return {
+        "has_data": True,
+        "updated_at": _as_utc(snapshot.finished_at or snapshot.started_at),
+        "source": "public_gosuslugi",
+        "source_text": "Данные рассчитываются только по публичным конкурсным спискам Госуслуг.",
+        "totals": {
+            "directions_count": snapshot.groups_count or len(directions),
+            "budget_places": budget_places,
+            "applicants_count": snapshot.unique_applications_count or snapshot.rows_count,
+            "consents_count": consents_count,
+        },
+        "directions": directions,
+        "cascade": cascade,
+        "cutoffs": cutoffs,
+        "competition": competition,
+    }
+
+
+def _direction_history_point(
+    *,
+    snapshot: Snapshot,
+    group: CompetitionGroup,
+    rows: list[tuple[ApplicantRow, ApplicantDailyMetric | None]],
+    stat: GroupStat | None,
+    assignment: dict[str, int | None],
+) -> dict:
+    item = _direction_dashboard_item(group=group, rows=rows, stat=stat, assignment=assignment)
+    return {
+        "date": _as_utc(snapshot.finished_at or snapshot.started_at),
+        "applicants_count": item["applicants_count"],
+        "consent_count": item["consent_count"],
+        "applicants_per_place": item["applicants_per_place"],
+        "calculated_budget_score": item["cutoff"]["cascade"],
+        "calculated_competitors_count": len(
+            [row for row, _metric in rows if row.consent and assignment.get(row.application_id) == group.id]
+        ),
+    }
+
+
+def build_direction_response(db: Session, *, group_id: int) -> dict:
+    group = db.query(CompetitionGroup).filter(CompetitionGroup.group_id == group_id).first()
+    if group is None:
+        return {"found": False, "group_id": group_id}
+
+    snapshots = (
+        db.query(Snapshot)
+        .filter(Snapshot.status == "ok")
+        .order_by(Snapshot.started_at.asc(), Snapshot.id.asc())
+        .all()
+    )
+    if not snapshots:
+        return {"found": False, "group_id": group_id, "name": group.name}
+
+    latest = snapshots[-1]
+    latest_rows = (
+        db.query(ApplicantRow, ApplicantDailyMetric)
+        .outerjoin(
+            ApplicantDailyMetric,
+            (ApplicantDailyMetric.snapshot_id == ApplicantRow.snapshot_id)
+            & (ApplicantDailyMetric.group_id == ApplicantRow.group_id)
+            & (ApplicantDailyMetric.application_id == ApplicantRow.application_id),
+        )
+        .filter(ApplicantRow.snapshot_id == latest.id, ApplicantRow.group_id == group.id)
+        .all()
+    )
+    latest_stat = (
+        db.query(GroupStat)
+        .filter(GroupStat.snapshot_id == latest.id, GroupStat.group_id == group.id)
+        .first()
+    )
+    latest_assignment = _snapshot_assignment(db, latest.id)
+    summary = _direction_dashboard_item(group=group, rows=latest_rows, stat=latest_stat, assignment=latest_assignment)
+    assigned_rows = sorted(
+        [
+            row
+            for row, _metric in latest_rows
+            if row.consent and latest_assignment.get(row.application_id) == group.id
+        ],
+        key=lambda row: (-(row.score or 0), row.position or 10**9, row.application_id),
+    )
+    applicants = []
+    seats = group.seats or 0
+    for index, row in enumerate(assigned_rows, start=1):
+        if seats and index <= seats:
+            status = "в пределах бюджета"
+        elif seats and index == seats + 1:
+            status = "следующий после бюджета"
+        else:
+            status = "ниже бюджета"
+        applicants.append(
+            {
+                "calculated_position": index,
+                "application_id": row.application_id,
+                "score": row.score,
+                "priority": row.priority,
+                "source_position": row.position,
+                "status": status,
+            }
+        )
+
+    history = []
+    for snapshot in snapshots:
+        rows = (
+            db.query(ApplicantRow, ApplicantDailyMetric)
+            .outerjoin(
+                ApplicantDailyMetric,
+                (ApplicantDailyMetric.snapshot_id == ApplicantRow.snapshot_id)
+                & (ApplicantDailyMetric.group_id == ApplicantRow.group_id)
+                & (ApplicantDailyMetric.application_id == ApplicantRow.application_id),
+            )
+            .filter(ApplicantRow.snapshot_id == snapshot.id, ApplicantRow.group_id == group.id)
+            .all()
+        )
+        if not rows:
+            continue
+        stat = (
+            db.query(GroupStat)
+            .filter(GroupStat.snapshot_id == snapshot.id, GroupStat.group_id == group.id)
+            .first()
+        )
+        history.append(
+            _direction_history_point(
+                snapshot=snapshot,
+                group=group,
+                rows=rows,
+                stat=stat,
+                assignment=_snapshot_assignment(db, snapshot.id),
+            )
+        )
+
+    return {
+        "found": True,
+        "group_id": group.group_id,
+        "name": group.name,
+        "okso_code": group.okso_code,
+        "seats": group.seats,
+        "updated_at": _as_utc(latest.finished_at or latest.started_at),
+        "summary": summary,
+        "history": history,
+        "applicants": applicants,
     }
 
 

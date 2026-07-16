@@ -104,6 +104,132 @@ def test_search_returns_directions_and_logs_request(db_session):
     assert db_session.query(SearchLog).one().found is True
 
 
+def test_overview_returns_gosuslugi_dashboard_from_latest_snapshot(db_session):
+    from backend.models import ApplicantDailyMetric, ApplicantRow, CompetitionGroup, Snapshot
+
+    snapshot = Snapshot(
+        status="ok",
+        started_at=datetime(2026, 7, 10, 9, 0),
+        finished_at=datetime(2026, 7, 10, 9, 5),
+        groups_count=2,
+        rows_count=5,
+        unique_applications_count=5,
+    )
+    first = CompetitionGroup(group_id=601, okso_code="09.03.01", name="Информатика", seats=2)
+    second = CompetitionGroup(group_id=602, okso_code="09.03.04", name="Программная инженерия", seats=1)
+    stale = CompetitionGroup(group_id=603, okso_code="11.03.01", name="Старое направление", seats=99)
+    db_session.add_all([snapshot, first, second, stale])
+    db_session.flush()
+
+    for group, rows in [
+        (first, [("1001", 1, 300, True), ("1002", 2, 290, False), ("1003", 3, 280, False)]),
+        (second, [("2001", 1, 310, True), ("2002", 2, 270, False)]),
+    ]:
+        for application_id, position, score, consent in rows:
+            db_session.add(
+                ApplicantRow(
+                    snapshot_id=snapshot.id,
+                    group_id=group.id,
+                    application_id=application_id,
+                    position=position,
+                    score=score,
+                    priority=1,
+                    consent=consent,
+                )
+            )
+            db_session.add(
+                ApplicantDailyMetric(
+                    snapshot_id=snapshot.id,
+                    group_id=group.id,
+                    application_id=application_id,
+                    position=position,
+                    consent_position=position,
+                    real_competitor_position=position,
+                    above_with_consent=max(0, position - 1),
+                    above_without_consent=0,
+                    general_gap_to_budget=max(0, position - (group.seats or 0)),
+                    consent_gap_to_budget=max(0, position - (group.seats or 0)),
+                    real_gap_to_budget=max(0, position - (group.seats or 0)),
+                )
+            )
+    db_session.commit()
+
+    response = build_client(db_session).get("/api/overview")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "public_gosuslugi"
+    assert body["totals"] == {
+        "directions_count": 2,
+        "budget_places": 3,
+        "applicants_count": 5,
+        "consents_count": 2,
+    }
+    assert body["cascade"][0]["name"] == "Информатика"
+    assert body["cascade"][0]["cascade_in_budget_count"] == 1
+    assert body["cascade"][0]["no_consent_in_cascade"] == 0
+    assert body["cascade"][0]["cutoff"]["general"] == 290
+    assert body["cascade"][0]["cutoff"]["cascade"] is None
+    competition_by_name = {item["name"]: item for item in body["competition"]}
+    assert competition_by_name["Информатика"]["applicants_per_place"] == 1.5
+    assert competition_by_name["Программная инженерия"]["applicants_per_place"] == 2.0
+
+
+def test_direction_page_returns_history_and_assigned_consent_applicants_only(db_session):
+    from backend.models import ApplicantRow, CompetitionGroup, Snapshot
+
+    first_snapshot = Snapshot(
+        status="ok",
+        started_at=datetime(2026, 7, 9, 9, 0),
+        finished_at=datetime(2026, 7, 9, 9, 5),
+        groups_count=2,
+        rows_count=4,
+        unique_applications_count=3,
+    )
+    latest_snapshot = Snapshot(
+        status="ok",
+        started_at=datetime(2026, 7, 10, 9, 0),
+        finished_at=datetime(2026, 7, 10, 9, 5),
+        groups_count=2,
+        rows_count=4,
+        unique_applications_count=3,
+    )
+    target = CompetitionGroup(group_id=701, okso_code="09.03.01", name="Информатика", seats=1)
+    higher = CompetitionGroup(group_id=702, okso_code="09.03.04", name="Программная инженерия", seats=1)
+    db_session.add_all([first_snapshot, latest_snapshot, target, higher])
+    db_session.flush()
+
+    for snapshot, target_score in [(first_snapshot, 280), (latest_snapshot, 290)]:
+        for group, application_id, score, priority, consent, position in [
+            (target, "1001", 300, 2, True, 1),
+            (higher, "1001", 300, 1, True, 1),
+            (target, "1002", target_score, 1, True, 2),
+            (target, "1003", 310, 1, False, 3),
+        ]:
+            db_session.add(
+                ApplicantRow(
+                    snapshot_id=snapshot.id,
+                    group_id=group.id,
+                    application_id=application_id,
+                    position=position,
+                    score=score,
+                    priority=priority,
+                    consent=consent,
+                )
+            )
+    db_session.commit()
+
+    response = build_client(db_session).get("/api/directions/701")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["found"] is True
+    assert body["summary"]["cutoff"]["cascade"] == 290
+    assert [point["calculated_budget_score"] for point in body["history"]] == [280, 290]
+    assert [item["application_id"] for item in body["applicants"]] == ["1002"]
+    assert body["applicants"][0]["status"] == "в пределах бюджета"
+
+
 def test_search_normalizes_formatted_application_id(db_session):
     from backend.models import SearchLog
 

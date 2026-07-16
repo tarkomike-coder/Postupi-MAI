@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal
-from .services.search import SearchRateLimited, build_search_response, latest_status
+from .services.search import SearchRateLimited, build_direction_response, build_overview_response, build_search_response, latest_status
 
 router = APIRouter(prefix="/api")
 
@@ -52,6 +52,16 @@ def ready(db: Session = Depends(get_db)) -> dict:
 @router.get("/status")
 def status(db: Session = Depends(get_db)) -> dict:
     return latest_status(db)
+
+
+@router.get("/overview")
+def overview(db: Session = Depends(get_db)) -> dict:
+    return build_overview_response(db)
+
+
+@router.get("/directions/{group_id}")
+def direction(group_id: int, db: Session = Depends(get_db)) -> dict:
+    return build_direction_response(db, group_id=group_id)
 
 
 @router.post("/search")

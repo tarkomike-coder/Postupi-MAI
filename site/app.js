@@ -3,6 +3,7 @@ const input = document.getElementById("application-id");
 const result = document.getElementById("result");
 const message = document.getElementById("message");
 const dataStatus = document.getElementById("data-status");
+const homepageOverview = document.getElementById("homepage-overview");
 
 const deadline = new Date("2026-07-25T17:00:00+03:00");
 let chartInstances = [];
@@ -88,6 +89,281 @@ async function loadStatus() {
     }
   } catch {
     dataStatus.textContent = "Статус данных недоступен";
+  }
+}
+
+function fmtInt(value) {
+  return new Intl.NumberFormat("ru-RU").format(asNumber(value));
+}
+
+function fmtScore(value) {
+  return value === null || value === undefined ? "-" : fmtInt(value);
+}
+
+function fmtRatio(value) {
+  return value === null || value === undefined
+    ? "-"
+    : new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(value);
+}
+
+function renderDashboardRows(rows, columns) {
+  if (!rows?.length) {
+    return '<p class="dashboard-empty">Данные по направлениям не загружены.</p>';
+  }
+  return `
+    <div class="dashboard-table" role="table" style="--dashboard-columns:${Math.max(1, columns.length - 1)}">
+      <div class="dashboard-table-head" role="row">
+        ${columns.map((column) => `<span role="columnheader">${column.label}</span>`).join("")}
+      </div>
+      ${rows.map((row) => `
+        <div class="dashboard-table-row" role="row">
+          ${columns.map((column) => `<span role="cell">${column.render(row)}</span>`).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function directionCell(row) {
+  return `<a class="direction-link" href="/directions/${row.group_id}"><strong>${row.name}</strong><small>${row.okso_code || "ОКСО не указан"}</small></a>`;
+}
+
+function directionPageId() {
+  const match = window.location.pathname.match(/^\/directions\/(\d+)\/?$/);
+  return match ? match[1] : null;
+}
+
+function renderHomepageOverview(data) {
+  if (!homepageOverview) return;
+  if (!data?.has_data) {
+    homepageOverview.innerHTML = `
+      <section class="dashboard-shell">
+        <div class="loading-panel">
+          <span class="spinner" aria-hidden="true"></span>
+          <div>
+            <h2>Загрузка данных</h2>
+            <p>Получаем расчетные данные по направлениям.</p>
+          </div>
+        </div>
+      </section>
+    `;
+    return;
+  }
+  const totals = data.totals || {};
+  const directions = data.directions || data.cascade || [];
+  homepageOverview.innerHTML = `
+    <section class="dashboard-shell" aria-labelledby="overview-title">
+      <div class="dashboard-head">
+        <div>
+          <p class="eyebrow">Публичные данные Госуслуг</p>
+          <h2 id="overview-title">МАИ 2026: текущая картина по конкурсным спискам</h2>
+          <p>Данные рассчитаны только по публичным конкурсным спискам Госуслуг. Сервис не является официальным сайтом МАИ и не публикует результаты зачисления.</p>
+        </div>
+        <span class="dashboard-source">Обновлено: ${fmtDate(data.updated_at)}</span>
+      </div>
+
+      <div class="dashboard-metrics">
+        <div><strong>${fmtInt(totals.directions_count)}</strong><span>направлений очного бюджета</span></div>
+        <div><strong>${fmtInt(totals.budget_places)}</strong><span>бюджетных мест</span></div>
+        <div><strong>${fmtInt(totals.applicants_count)}</strong><span>поступающих в списках</span></div>
+        <div><strong>${fmtInt(totals.consents_count)}</strong><span>согласий в списках</span></div>
+      </div>
+
+      <section class="dashboard-section">
+        <div class="dashboard-section-head">
+          <h3>Все направления: места, заявления, согласия и расчетный балл</h3>
+          <p>В таблице приведены все направления из текущего снимка Госуслуг. Один поступающий может быть в нескольких конкурсных списках, поэтому расчет учитывает текущие согласия и приоритеты. <a class="inline-help" href="#faq-cascade" data-open-faq>Что значит учет приоритетов?</a></p>
+        </div>
+        ${renderDashboardRows(directions, [
+          { label: "Направление", render: directionCell },
+          { label: "Бюджетных мест", render: (row) => fmtInt(row.seats) },
+          { label: "Заявлений в списке", render: (row) => fmtInt(row.applicants_count) },
+          { label: "Согласий", render: (row) => fmtInt(row.consent_count) },
+          { label: "Расчетный балл на бюджет", render: (row) => fmtScore(row.cutoff?.cascade) },
+          { label: "Конкурс, чел./место", render: (row) => fmtRatio(row.applicants_per_place) },
+        ])}
+      </section>
+
+      <section class="dashboard-note" aria-label="Как читать таблицу">
+        <h3>Как читать таблицу</h3>
+        <p><b>Расчетный балл на бюджет</b> - не официальный проходной балл и не итог зачисления. Это текущий ориентир по публичным спискам Госуслуг на момент обновления данных.</p>
+        <p><b>Балл может быть выше 300</b>, если в данных Госуслуг к сумме ЕГЭ добавлены индивидуальные достижения.</p>
+      </section>
+
+      <section class="dashboard-section">
+        <div class="dashboard-section-head">
+          <h3>Направления с наибольшей конкурсной нагрузкой</h3>
+          <p>Приведены направления с наибольшим числом поступающих на одно бюджетное место по текущим публичным спискам.</p>
+        </div>
+        ${renderDashboardRows(data.competition, [
+          { label: "Направление", render: directionCell },
+          { label: "Бюджетных мест", render: (row) => fmtInt(row.seats) },
+          { label: "Поступающих", render: (row) => fmtInt(row.applicants_count) },
+          { label: "Согласий", render: (row) => fmtInt(row.consent_count) },
+          { label: "Поступающих на место", render: (row) => fmtRatio(row.applicants_per_place) },
+        ])}
+      </section>
+    </section>
+  `;
+}
+
+async function loadOverview() {
+  if (!homepageOverview) return;
+  try {
+    const response = await fetch("/api/overview");
+    if (!response.ok) throw new Error("overview unavailable");
+    renderHomepageOverview(await response.json());
+  } catch {
+    homepageOverview.innerHTML = `
+      <section class="dashboard-shell">
+        <div class="dashboard-head">
+          <div>
+            <p class="eyebrow">Публичные данные Госуслуг</p>
+            <h2>МАИ 2026: текущая картина по конкурсным спискам</h2>
+            <p>Сводка временно недоступна. Поиск по коду поступающего работает отдельно.</p>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+}
+
+function renderDirectionApplicants(applicants) {
+  if (!applicants?.length) {
+    return '<p class="dashboard-empty">Расчетный список по направлению не сформирован.</p>';
+  }
+  return `
+    <div class="direction-applicant-table" role="table">
+      <div class="direction-applicant-head" role="row">
+        <span role="columnheader">№</span>
+        <span role="columnheader">Код поступающего</span>
+        <span role="columnheader">Балл</span>
+        <span role="columnheader">Приоритет</span>
+        <span role="columnheader">Место в списке</span>
+        <span role="columnheader">Статус</span>
+      </div>
+      ${applicants.map((item) => `
+        <div class="direction-applicant-row" role="row">
+          <span role="cell">${fmtInt(item.calculated_position)}</span>
+          <span role="cell"><strong>${item.application_id}</strong></span>
+          <span role="cell">${fmtScore(item.score)}</span>
+          <span role="cell">${item.priority ?? "-"}</span>
+          <span role="cell">${item.source_position ?? "-"}</span>
+          <span role="cell">${item.status}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderDirectionPage(data) {
+  destroyCharts();
+  const hero = document.querySelector(".hero");
+  if (hero) hero.hidden = true;
+  result.hidden = true;
+  if (!homepageOverview) return;
+  if (!data?.found) {
+    homepageOverview.innerHTML = `
+      <section class="dashboard-shell">
+        <a class="back-link" href="/">← На главную</a>
+        <h2>Направление не найдено</h2>
+      </section>
+    `;
+    return;
+  }
+  const summary = data.summary || {};
+  const cutoff = summary.cutoff || {};
+  homepageOverview.innerHTML = `
+    <section class="direction-page" aria-labelledby="direction-title">
+      <a class="back-link" href="/">← На главную</a>
+      <header class="direction-page-head">
+        <div>
+          <p class="eyebrow">МАИ 2026 · очный бюджет</p>
+          <h2 id="direction-title">${data.name}</h2>
+          <p>${data.okso_code || "ОКСО не указан"} · ${fmtInt(data.seats)} бюджетных мест · обновлено: ${fmtDate(data.updated_at)}</p>
+        </div>
+      </header>
+
+      <div class="dashboard-metrics">
+        <div><strong>${fmtInt(data.seats)}</strong><span>бюджетных мест</span></div>
+        <div><strong>${fmtScore(cutoff.cascade)}</strong><span>расчетный балл на бюджет</span></div>
+        <div><strong>${fmtInt(summary.consent_count)}</strong><span>согласий</span></div>
+        <div><strong>${fmtInt(summary.applicants_count)}</strong><span>заявлений в списке</span></div>
+      </div>
+
+      <section class="direction-chart-grid" aria-label="Динамика направления">
+        <div class="chart-card"><h3>Расчетный балл на бюджет</h3><div class="chart-box"><canvas id="direction-score-chart"></canvas></div></div>
+        <div class="chart-card"><h3>Заявлений в списке</h3><div class="chart-box"><canvas id="direction-applicants-chart"></canvas></div></div>
+        <div class="chart-card"><h3>Согласий</h3><div class="chart-box"><canvas id="direction-consents-chart"></canvas></div></div>
+        <div class="chart-card"><h3>Конкурс, человек на место</h3><div class="chart-box"><canvas id="direction-competition-chart"></canvas></div></div>
+      </section>
+
+      <section class="dashboard-section">
+        <div class="dashboard-section-head">
+          <h3>Расчетный список с учетом согласий и приоритетов</h3>
+          <p>В списке находятся поступающие с согласием, которые остаются на этом направлении после учета приоритетов. Если поступающий проходит на направление с более высоким приоритетом, здесь он не считается конкурентом.</p>
+        </div>
+        ${renderDirectionApplicants(data.applicants)}
+      </section>
+    </section>
+  `;
+  mountDirectionCharts(data);
+  trackGoal("direction_open");
+}
+
+function mountDirectionCharts(data) {
+  destroyCharts();
+  if (!window.Chart || !data?.history?.length) return;
+  const labels = data.history.map((point) => fmtDate(point.date));
+  const options = chartDefaults();
+  const line = (canvasId, label, values, color) => {
+    const target = document.getElementById(canvasId);
+    if (!target) return;
+    chartInstances.push(new Chart(target, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label,
+          data: values,
+          borderColor: color,
+          backgroundColor: color,
+          tension: 0.25,
+          spanGaps: true,
+        }],
+      },
+      options,
+    }));
+  };
+  line("direction-score-chart", "расчетный балл", data.history.map((point) => point.calculated_budget_score), "#30d17e");
+  line("direction-applicants-chart", "заявлений", data.history.map((point) => point.applicants_count), "#4d8cff");
+  line("direction-consents-chart", "согласий", data.history.map((point) => point.consent_count), "#ffb648");
+  line("direction-competition-chart", "человек на место", data.history.map((point) => point.applicants_per_place), "#a778ff");
+}
+
+async function loadDirectionPage(groupId) {
+  if (!homepageOverview) return;
+  homepageOverview.innerHTML = `
+    <section class="dashboard-shell loading-panel">
+      <a class="back-link" href="/">← На главную</a>
+      <span class="spinner" aria-hidden="true"></span>
+      <div>
+        <h2>Загрузка направления</h2>
+        <p>Получаем динамику и расчетный список.</p>
+      </div>
+    </section>
+  `;
+  try {
+    const response = await fetch(`/api/directions/${groupId}`);
+    if (!response.ok) throw new Error("direction unavailable");
+    renderDirectionPage(await response.json());
+  } catch {
+    homepageOverview.innerHTML = `
+      <section class="dashboard-shell">
+        <a class="back-link" href="/">← На главную</a>
+        <h2>Направление временно недоступно</h2>
+      </section>
+    `;
   }
 }
 
@@ -510,5 +786,24 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+document.addEventListener("click", (event) => {
+  const link = event.target.closest("[data-open-faq]");
+  if (!link) return;
+  const faq = document.querySelector(".faq-block");
+  if (faq) faq.open = true;
+});
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest(".direction-link");
+  if (!link) return;
+  trackGoal("direction_click");
+});
+
 loadMetrika();
 loadStatus();
+const currentDirectionId = directionPageId();
+if (currentDirectionId) {
+  loadDirectionPage(currentDirectionId);
+} else {
+  loadOverview();
+}

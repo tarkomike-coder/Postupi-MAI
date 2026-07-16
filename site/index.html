@@ -3,15 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Поступление МАИ 2026 — поиск по коду поступающего</title>
-  <meta name="description" content="Проверка положения поступающего в МАИ по коду из конкурсных списков Госуслуг: направления, бюджетные места, приоритеты, согласия и каскад.">
-  <link rel="canonical" href="https://mai.tarko.su/">
+  <title>МАИ 2026: поступление, списки поступающих, конкурсные списки, проходные баллы, бюджет, калькулятор шансов по коду</title>
+  <meta name="description" content="Проверьте списки поступающих МАИ 2026 по коду: проходные баллы, бюджетные места, позиции, согласия, приоритеты, каскад и калькулятор шансов на поступление.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://mai.tarko.su/">
-  <meta property="og:title" content="Поступление МАИ 2026 — поиск по коду поступающего">
-  <meta property="og:description" content="Направления, позиции, приоритеты, согласия и каскад по публичным конкурсным спискам Госуслуг.">
+  <meta property="og:title" content="МАИ 2026: поступление, списки поступающих, конкурсные списки, проходные баллы, бюджет, калькулятор шансов по коду">
+  <meta property="og:description" content="Проверьте списки поступающих МАИ 2026 по коду: проходные баллы, бюджетные места, позиции, согласия, приоритеты, каскад и калькулятор шансов.">
   <meta name="twitter:card" content="summary">
-  <link rel="stylesheet" href="/styles.css?v=20260710-5">
+  <link rel="stylesheet" href="/styles.css?v=20260716-5">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script>window.MAI_METRIKA_ID = 110548873;</script>
   <script type="application/ld+json">
@@ -22,7 +21,7 @@
     "url": "https://mai.tarko.su/",
     "applicationCategory": "EducationalApplication",
     "operatingSystem": "Any",
-    "description": "Проверка положения поступающего в МАИ по коду из конкурсных списков Госуслуг."
+    "description": "Списки поступающих МАИ 2026, проходные баллы, бюджетные места и оценка шансов по коду из конкурсных списков Госуслуг."
   }
   </script>
   <script type="application/ld+json">
@@ -56,6 +55,22 @@
       },
       {
         "@type": "Question",
+        "name": "Как оценить шансы поступления в МАИ?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Введите код поступающего из конкурсных списков Госуслуг. Сервис выведет направления МАИ, позиции в списках, бюджетные места, согласия, приоритеты и расчёт по каскаду. Это помогает проверить шансы поступления на бюджет по текущим данным, но не является официальным результатом зачисления."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Можно ли узнать вероятность поступления в МАИ?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Сервис даёт не точную вероятность поступления в процентах, а сценарную оценку по текущим конкурсным спискам МАИ. На результат влияют новые согласия, приоритеты абитуриентов выше в списке, обновления Госуслуг и число бюджетных мест."
+        }
+      },
+      {
+        "@type": "Question",
         "name": "Что значит расчёт по каскаду?",
         "acceptedAnswer": {
           "@type": "Answer",
@@ -69,7 +84,7 @@
 <body>
   <noscript><div><img src="https://mc.yandex.ru/watch/110548873" style="position:absolute; left:-9999px;" alt=""></div></noscript>
   <div class="uni-rail" aria-hidden="true">
-    <span>Аналитика поступления по коду поступающего</span>
+    <span>Списки поступающих МАИ 2026, бюджет и шансы по коду</span>
   </div>
 
   <header class="topbar">
@@ -83,8 +98,8 @@
     <section class="hero" aria-labelledby="search-title">
       <div>
         <p class="eyebrow">Госуслуги · МАИ · очный бюджет</p>
-        <h1 id="search-title">Аналитика поступления по коду поступающего</h1>
-        <p class="hero-copy">Направления, позиции, каскад приоритетов, шансы и динамика в одном экране.</p>
+        <h1 id="search-title">Списки поступающих МАИ 2026, бюджет и шансы по коду</h1>
+        <p class="hero-copy">Проверьте проходные баллы, позиции, приоритеты, согласия, каскад и текущую оценку шансов на бюджет в одном экране.</p>
       </div>
       <form id="search-form" class="search-form">
         <label for="application-id">Код поступающего / ID поступающего</label>
@@ -97,6 +112,15 @@
 
     <section id="message" class="message" hidden></section>
     <section id="result" class="result" hidden></section>
+    <section id="homepage-overview" class="homepage-overview" aria-live="polite">
+      <section class="dashboard-shell loading-panel">
+        <span class="spinner" aria-hidden="true"></span>
+        <div>
+          <h2>Загрузка данных</h2>
+          <p>Получаем расчетные данные по направлениям.</p>
+        </div>
+      </section>
+    </section>
 
     <details class="faq-block">
       <summary>Как это работает</summary>
@@ -114,6 +138,14 @@
           <p>Сервис использует публичные конкурсные списки Госуслуг по МАИ: направления, бюджетные места, позиции, баллы, приоритеты и отметки согласия.</p>
         </article>
         <article>
+          <h2>Как оценить шансы поступления в МАИ?</h2>
+          <p>Введите код поступающего из конкурсных списков Госуслуг. Сервис выведет направления МАИ, позиции в списках, бюджетные места, согласия, приоритеты и расчёт по каскаду. Это помогает проверить шансы поступления на бюджет по текущим данным, но не является официальным результатом зачисления.</p>
+        </article>
+        <article>
+          <h2>Можно ли узнать вероятность поступления в МАИ?</h2>
+          <p>Сервис даёт не точную вероятность поступления в процентах, а сценарную оценку по текущим конкурсным спискам МАИ. На результат влияют новые согласия, приоритеты абитуриентов выше в списке, обновления Госуслуг и число бюджетных мест.</p>
+        </article>
+        <article id="faq-cascade">
           <h2>Что значит расчёт по каскаду?</h2>
           <p>Каскад учитывает приоритеты и согласия: часть поступающих выше в одном списке может уходить на более приоритетные направления и не мешать здесь.</p>
         </article>
@@ -134,6 +166,6 @@
     </details>
   </main>
 
-  <script src="/app.js?v=20260710-2"></script>
+  <script src="/app.js?v=20260716-5"></script>
 </body>
 </html>
